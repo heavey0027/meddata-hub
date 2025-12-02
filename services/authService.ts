@@ -39,13 +39,13 @@ export const login = async (role: UserRole, id: string, password?: string): Prom
 
   // 2. Mock Fallback Logic
   if (role === 'admin') {
-    if (id === 'admin' && password === 'admin') {
+    if (id === 'admin' && password === 'admin123') {
       const session: UserSession = { id: 'admin', name: '系统管理员', role: 'admin' };
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
       addLog('SUCCESS', 'AUTH', '管理员登录成功 (Mock)', 'Session Started');
       return session;
     }
-    throw new Error('管理员账号或密码错误 (默认 admin/admin)');
+    throw new Error('管理员账号或密码错误 (默认 admin/admin123)');
   }
 
   const user = await findUserMock(role, id);
