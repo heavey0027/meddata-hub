@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from db_utils import get_db_connection
 import logging
+from collections import defaultdict
+import datetime
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -13,7 +15,7 @@ console_handler.setLevel(logging.INFO)  # 控制台输出的日志级别
 
 # 创建一个文件输出处理器
 file_handler = logging.FileHandler('app.log', mode='a')  # 输出到 app.log 文件
-file_handler.setLevel(logging.INFO)  # 文件输出的日志级别
+file_handler.setLevel(logging.WARNING)  # 文件输出的日志级别
 
 # 创建日志格式
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -397,6 +399,114 @@ def get_appointments():
             cursor.close()
         if conn:
             conn.close()
+        logger.info("Database connection closed.")
+
+#1.8 新增接口：根据年、月、日统计预约数据
+@app.route('/api/appointments/statistics', methods=['GET'])
+def get_appointment_statistics():
+    conn = None
+    cursor = None
+    try:
+        # 记录请求日志
+        logger.info("Request to get appointment statistics.")
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # 获取查询参数
+        date = request.args.get('date')  # 获取 date 参数, 格式：yyyy-mm-dd 或 yyyy-mm 或 yyyy
+        role = request.args.get('role')  # 获取 role 参数
+
+        # 记录传入的请求参数
+        logger.info("Received parameters: date=%s, role=%s", date, role)
+
+        # 确定查询的时间区间
+        if date:
+            date_parts = date.split('-')
+            if len(date_parts) == 3:  # 年-月-日
+                year, month, day = map(int, date_parts)
+                start_date = datetime.datetime(year, month, day, 0, 0)
+                end_date = start_date + datetime.timedelta(days=1)
+                time_condition = "WHERE a.create_time >= %s AND a.create_time < %s"
+                params = (start_date, end_date)
+                logger.info("Date filter: Single day %s", date)
+            elif len(date_parts) == 2:  # 年-月
+                year, month = map(int, date_parts)
+                start_date = datetime.datetime(year, month, 1, 0, 0)
+                end_date = (start_date + datetime.timedelta(days=32)).replace(day=1)
+                time_condition = "WHERE a.create_time >= %s AND a.create_time < %s"
+                params = (start_date, end_date)
+                logger.info("Date filter: Month %s", date)
+            elif len(date_parts) == 1:  # 仅年
+                year = int(date_parts[0])
+                start_date = datetime.datetime(year, 1, 1, 0, 0)
+                end_date = datetime.datetime(year + 1, 1, 1, 0, 0)
+                time_condition = "WHERE a.create_time >= %s AND a.create_time < %s"
+                params = (start_date, end_date)
+                logger.info("Date filter: Year %s", date)
+            else:
+                logger.error("Invalid date format: %s", date)
+                return jsonify({"error": "Invalid date format"}), 400
+        else:
+            # 如果没有传递 date 参数，则统计全部数据
+            time_condition = ""
+            params = ()
+            logger.info("No date filter provided. Fetching all data.")
+
+        # 构建基础查询 SQL，关联医生和科室
+        sql = """
+            SELECT a.create_time
+            FROM appointments a
+            LEFT JOIN doctors d ON a.doctor_id = d.id
+            LEFT JOIN departments dept ON a.department_id = dept.id
+            {}
+        """.format(time_condition)
+
+        # 记录执行的 SQL
+        logger.info("Executing SQL: %s with parameters %s", sql, params)
+
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+
+        # 记录查询结果数量
+        logger.info("Fetched %d appointment records.", len(rows))
+
+        # 统计按小时分组
+        hourly_stats = defaultdict(int)
+        for row in rows:
+            # 确保 create_time 是 datetime 类型，并且处理微秒部分
+            create_time = row['create_time']
+            if isinstance(create_time, str):  # 如果是字符串，转换为 datetime
+                try:
+                    # 修改为支持微秒部分
+                    create_time = datetime.datetime.strptime(create_time, '%Y-%m-%d %H:%M:%S.%f')
+                except ValueError as e:
+                    # 如果有微秒部分，就按照这个格式进行解析
+                    create_time = datetime.datetime.strptime(create_time, '%Y-%m-%d %H:%M:%S')
+
+            hour = create_time.hour
+            hourly_stats[hour] += 1
+
+        # 格式化每小时统计数据
+        stats = [{"hour": hour, "count": count} for hour, count in sorted(hourly_stats.items())]
+
+        # 记录统计数据
+        logger.info("Hourly statistics: %s", stats)
+
+        return jsonify(stats)
+
+    except Exception as e:
+        # 捕获并记录异常
+        logger.error("Error occurred while fetching appointment statistics: %s", str(e))
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        # 确保资源被关闭
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+        # 记录数据库连接关闭
         logger.info("Database connection closed.")
 
 
