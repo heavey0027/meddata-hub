@@ -401,6 +401,7 @@ export const getAppointments = async (doctorId?: string, queryRole?: UserRole, s
     }
   }
   if (specificDate) {
+      // Mock filter by date string prefix (YYYY-MM-DD)
       fallback = fallback.filter((a: Appointment) => a.createTime.startsWith(specificDate));
   }
 
@@ -411,6 +412,7 @@ export const getAppointments = async (doctorId?: string, queryRole?: UserRole, s
   // If Admin is querying for dashboard, pass role and date
   if (queryRole === 'admin') {
       params.push(`role=admin`);
+      // If specificDate is provided, use it. Otherwise use today's date.
       const dateToSend = specificDate || getLocalDate();
       params.push(`date=${dateToSend}`);
   }
@@ -418,6 +420,56 @@ export const getAppointments = async (doctorId?: string, queryRole?: UserRole, s
   const queryString = params.length > 0 ? `?${params.join('&')}` : '';
   const endpoint = `/appointments${queryString}`;
   return fetchWithFallback(endpoint, fallback);
+};
+
+// 7. Get Appointment Statistics (Aggregation)
+export const getAppointmentStatistics = async (date?: string): Promise<{ hour: number; count: number }[]> => {
+    // API Call Definition
+    // If date is provided, append it. If not, backend handles it as "all time" (or throws 400 if strictly following previous logic, but user requested client update).
+    let endpoint = `/appointments/statistics?role=admin`;
+    if (date) {
+        endpoint += `&date=${date}`;
+    }
+
+    // Mock Fallback Logic (Simulate Backend Aggregation)
+    const local = localStorage.getItem('meddata_appointments');
+    const allAppointments = local ? JSON.parse(local) : mockAppointments;
+    
+    let filtered = allAppointments;
+    if (date) {
+        filtered = allAppointments.filter((a: Appointment) => a.createTime.startsWith(date));
+    }
+    
+    // Determine multiplication factor to simulate larger volume for Year/Month view in Mock Mode
+    let multiplier = 1;
+    if (date) {
+        if (date.length === 4) multiplier = 100; // Year view: simulate 100x more data
+        if (date.length === 7) multiplier = 10;  // Month view: simulate 10x more data
+    } else {
+        // All time: simulate 200x
+        multiplier = 200;
+    }
+
+    // Group by hour
+    const hourlyCounts: Record<number, number> = {};
+    filtered.forEach((a: Appointment) => {
+        try {
+            // format: YYYY-MM-DD HH:mm:ss
+            const timePart = a.createTime.split(' ')[1];
+            if (timePart) {
+                const hour = parseInt(timePart.split(':')[0], 10);
+                if (!isNaN(hour)) {
+                    hourlyCounts[hour] = (hourlyCounts[hour] || 0) + 1 * multiplier;
+                }
+            }
+        } catch(e) {}
+    });
+
+    const mockStats = Object.entries(hourlyCounts)
+        .map(([hour, count]) => ({ hour: Number(hour), count }))
+        .sort((a, b) => a.hour - b.hour);
+
+    return fetchWithFallback(endpoint, mockStats);
 };
 
 // 5. Create Appointment (POST /api/appointments)
