@@ -112,7 +112,7 @@
 ### `src/components/Dashboard.tsx` & `PatientStats.tsx`
 *   **功能**: 统计图表。
 *   **详细逻辑**:
-    *   **数据计算**: 调用 `mockDb.getStats()`。该函数在 Service 层完成了数据的聚合 (如计算各科室挂号数、药品库存预警)，组件只负责使用 `Recharts` 渲染。
+    *   **数据计算**: 调用 `mockDb.getStats()、mockDb.getAppointmentStatist()`。该函数在 Service 层完成了数据的聚合 (如计算各科室挂号数、药品库存预警)，组件只负责使用 `Recharts` 渲染。
 *   **依赖**: `mockDb`
 
 ### `src/components/SystemLogs.tsx`

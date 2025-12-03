@@ -31,6 +31,7 @@
 ├── app.py           # 应用程序入口，包含路由、业务逻辑和日志配置
 ├── db_utils.py      # 数据库工具模块，负责连接池配置与连接获取
 ├── app.log          # 运行时产生的日志文件
+├── requirements.txt # 后端依赖
 └── ...
 ```
 
@@ -96,6 +97,7 @@
 | **GET** | `/api/records` | 获取所有病历 | 关联患者与医生名 |
 | **GET** | `/api/prescription_details` | 获取处方明细 | 无 |
 | **GET** | `/api/appointments` | 获取挂号记录 | `role`, `date`, `doctor_id` |
+| **GET** | `/api/appointments/statistics` | 根据年、月、日统计预约数据 | 无 |
 | **POST** | `/api/patients` | 注册新患者 | `id`, `name`, `password`... |
 | **PUT** | `/api/patients/<id>` | 更新患者信息 | `phone`, `address`... |
 | **POST** | `/api/records` | **提交病历(事务)** | `record` 对象, `details` 数组 |
@@ -111,4 +113,4 @@
 *   **数据库配置**: 需在 `db_utils.py` 中修改 `password` 字段以匹配本地 MySQL 环境。
 
 ---
-*文档生成时间: 2025-12-2*
+*文档生成时间: 2025-12-3*
