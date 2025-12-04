@@ -170,6 +170,8 @@ def get_patients():
         else:
             logger.info("Request to get all patients.")
 
+        patient_id = request.args.get('query')  # 获取 patient_id 参数
+
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
