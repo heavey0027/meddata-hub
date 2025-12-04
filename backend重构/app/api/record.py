@@ -1,0 +1,206 @@
+# --- START OF FILE app/api/record.py ---
+from flask import Blueprint, request, jsonify
+from app.utils.db import get_db_connection
+from app.utils.common import format_date
+import logging
+
+record_bp = Blueprint('record', __name__)
+logger = logging.getLogger(__name__)
+
+# 1.5 所有（或某个患者）病历(基础 JOIN 查询)
+@record_bp.route('/api/records', methods=['GET'])
+def get_records():
+    conn = None
+    cursor = None
+    try:
+        # 记录请求日志
+        logger.info("Request to get medical records.")
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # 获取查询参数
+        patient_id = request.args.get('patient_id')  # 获取 patient_id 参数
+
+        # 基本查询 SQL，关联患者和医生
+        sql = """
+            SELECT 
+                r.id, r.patient_id, p.name AS patient_name, 
+                r.doctor_id, d.name AS doctor_name, 
+                r.diagnosis, r.treatment_plan, r.visit_date 
+            FROM medical_records r
+            LEFT JOIN patients p ON r.patient_id = p.id
+            LEFT JOIN doctors d ON r.doctor_id = d.id
+        """
+
+        # 如果提供了 patient_id 参数，限制查询该患者的记录
+        if patient_id:
+            sql += " WHERE r.patient_id = %s"
+            cursor.execute(sql, (patient_id,))
+        else:
+            cursor.execute(sql)
+
+        rows = cursor.fetchall()
+
+        # 记录查询日志
+        logger.info("Fetched %d medical records from the database.", len(rows))
+
+        # 映射为前端驼峰命名
+        data = []
+        for row in rows:
+            data.append({
+                "id": row['id'],
+                "patientId": row['patient_id'],
+                "patientName": row['patient_name'],
+                "doctorId": row['doctor_id'],
+                "doctorName": row['doctor_name'],
+                "diagnosis": row['diagnosis'],
+                "treatmentPlan": row['treatment_plan'],
+                "visitDate": format_date(row['visit_date'])
+            })
+        return jsonify(data)
+    except Exception as e:
+        # 记录异常日志
+        logger.error("Error occurred while fetching medical records: %s", str(e))
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+        logger.info("Database connection closed.")
+
+# 1.6 所有（或某个病历）处方细则(基础查询)
+@record_bp.route('/api/prescription_details', methods=['GET'])
+def get_prescription_details():
+    conn = None
+    cursor = None
+    try:
+        # 记录请求日志
+        logger.info("Request to get prescription details.")
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # 获取查询参数
+        record_id = request.args.get('record_id')  # 获取 record_id 参数
+
+        # 基本查询 SQL
+        sql = """
+            SELECT id, record_id, medicine_id, dosage, usage_info, days 
+            FROM prescription_details
+        """
+
+        # 如果提供了 record_id 参数，限制查询该处方的细则
+        if record_id:
+            sql += " WHERE record_id = %s"
+            cursor.execute(sql, (record_id,))
+        else:
+            cursor.execute(sql)
+
+        rows = cursor.fetchall()
+
+        # 记录查询日志
+        logger.info("Fetched %d prescription details from the database.", len(rows))
+
+        # 映射 usage_info -> usage
+        data = []
+        for row in rows:
+            data.append({
+                "id": row['id'],
+                "recordId": row['record_id'],
+                "medicineId": row['medicine_id'],
+                "dosage": row['dosage'],
+                "usage": row['usage_info'],
+                "days": row['days']
+            })
+
+        return jsonify(data)
+
+    except Exception as e:
+        # 记录异常日志
+        logger.error("Error occurred while fetching prescription details: %s", str(e))
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+        logger.info("Database connection closed.")
+
+# 2.3 提交病历 (CREATE RECORD - 核心事务)
+@record_bp.route('/api/records', methods=['POST'])
+def create_record():
+    data = request.json
+    record_data = data.get('record')
+    details_list = data.get('details', [])
+
+    logger.info("Received data to create a new medical record: %s", record_data)
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        # 开启事务 (尽管 mysql-connector 如果 autocommit=False 默认就是开启的，显式调用更清晰)
+        conn.start_transaction()
+        cursor = conn.cursor()
+
+        # 1. 插入主表 (medical_records)
+        sql_record = """
+            INSERT INTO medical_records 
+            (id, patient_id, doctor_id, diagnosis, treatment_plan, visit_date)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(sql_record, (
+            record_data.get('id'),
+            record_data.get('patientId'),
+            record_data.get('doctorId'),
+            record_data.get('diagnosis'),
+            record_data.get('treatmentPlan'),
+            record_data.get('visitDate')
+        ))
+        logger.info("Medical record ID %s created successfully.", record_data.get('id'))
+
+        # 2. 循环插入子表 (prescription_details)
+        sql_detail = """
+            INSERT INTO prescription_details 
+            (id, record_id, medicine_id, dosage, usage_info, days)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        # 注意: 这里假设前端回传的 recordId 就是 record_data['id']
+        # 且 usage 字段对应数据库的 usage_info
+        for detail in details_list:
+            # 【高级查询 4】：嵌套查询校验库存
+            # 逻辑：如果(请求的药在数据库中不存在 OR 库存<=0)，则报错
+            cursor.execute("SELECT stock FROM medicines WHERE id = %s", (detail['medicineId'],))
+            res = cursor.fetchone()
+            if not res:
+                logger.error("Medicine ID %s does not exist.", detail['medicineId'])
+                raise Exception(f"药品ID {detail['medicineId']} 不存在")
+            elif res['stock'] <= 0:
+                logger.warning("Medicine ID %s has insufficient stock.", detail['medicineId'])
+                raise Exception(f"药品ID {detail['medicineId']} 库存不足")
+
+            cursor.execute(sql_detail, (
+                detail.get('id'),
+                record_data.get('id'),
+                detail.get('medicineId'),
+                detail.get('dosage'),
+                detail.get('usage'),
+                detail.get('days')
+            ))
+            logger.info("Prescription detail for Medicine ID %s inserted successfully.", detail['medicineId'])
+
+        # 3. 提交事务
+        conn.commit()
+        logger.info("Medical record and prescription details committed successfully.")
+        return jsonify({"success": True, "message": "病历提交成功"})
+
+    except Exception as e:
+        # 发生任何错误，立即回滚
+        if conn: conn.rollback()
+        logger.error("Error creating medical record: %s", str(e))
+        return jsonify({"success": False, "message": "提交失败: " + str(e)}), 500
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+        logger.info("Database connection closed.")
