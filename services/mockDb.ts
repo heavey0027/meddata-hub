@@ -562,24 +562,39 @@ export const getAppointmentStatistics = async (date?: string): Promise<{ hour: n
 
 // --- Logic Helpers ---
 
-export const findPatientByQuery = async (query: string | undefined | null): Promise<Patient | undefined> => {
+export const findPatientByQuery = async (query: string | undefined | null, searchKey?: 'id' | 'phone'): Promise<Patient | undefined> => {
   if (!query) return undefined;
   const q = String(query).trim();
   if (!q) return undefined;
   
-  // Always fetch fresh list from backend (since we removed cache)
-  const patients = await getPatients();
+  // Prepare fallback from local data
+  const local = localStorage.getItem('meddata_patients');
+  const allPatients = local ? JSON.parse(local) : mockPatients;
   
-  // Try ID exact match first (Case insensitive)
-  let found = patients.find(p => p.id.toLowerCase() === q.toLowerCase());
-  if (found) return found;
-
-  // Then try phone exact match
-  found = patients.find(p => p.phone === q);
-  if (found) return found;
-
-  // Name match is risky but included for completeness in Mock
-  return patients.find(p => p.name === q);
+  // Local find logic (Fallback)
+  const localMatch = allPatients.find((p: Patient) => {
+    if (searchKey === 'id') return p.id.toLowerCase() === q.toLowerCase();
+    if (searchKey === 'phone') return p.phone === q;
+    return p.id.toLowerCase() === q.toLowerCase() || p.phone === q || p.name === q;
+  });
+  
+  // Construct URL with query param to let backend filter
+  // Using generic 'query' param to match the function name intent.
+  // We can also append 'id' or 'phone' explicitly to help backend optimize if known.
+  let endpoint = `/patients?query=${encodeURIComponent(q)}`;
+  if (searchKey) {
+      endpoint += `&${searchKey}=${encodeURIComponent(q)}`;
+  }
+  
+  // Fetch specific match from backend using query param
+  const patients = await fetchWithFallback<Patient[]>(endpoint, localMatch ? [localMatch] : []);
+  
+  // Return the best match from the returned list
+  return patients.find(p => {
+    if (searchKey === 'id') return p.id.toLowerCase() === q.toLowerCase();
+    if (searchKey === 'phone') return p.phone === q;
+    return p.id.toLowerCase() === q.toLowerCase() || p.phone === q;
+  }) || patients[0];
 };
 
 // STRICT: Only get existing patients. NEVER create.
@@ -590,8 +605,8 @@ export const getExistingPatient = async (appointment: Appointment): Promise<Pati
 
     // 1. Try to find by ID if available (Best practice)
     if (appointment.patientId) {
-        const patients = await getPatients(); // Fresh fetch
-        const existing = patients.find(p => p.id === appointment.patientId);
+        // Use optimized findPatientByQuery to hit backend with query param + id hint
+        const existing = await findPatientByQuery(appointment.patientId, 'id');
         if (existing) {
              addLog('INFO', 'PATIENT_LOOKUP', '患者已存在 (ID Match)', existing.id);
              return existing;
@@ -600,7 +615,7 @@ export const getExistingPatient = async (appointment: Appointment): Promise<Pati
 
     // 2. Try to find by Phone
     if (appointment.patientPhone) {
-        const existingByPhone = await findPatientByQuery(appointment.patientPhone);
+        const existingByPhone = await findPatientByQuery(appointment.patientPhone, 'phone');
         if (existingByPhone) {
             addLog('INFO', 'PATIENT_LOOKUP', '患者已存在 (Phone Match)', existingByPhone.id);
             return existingByPhone;

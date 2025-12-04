@@ -154,7 +154,7 @@ def get_medicines():
         if conn: conn.close()
         logger.info("Database connection closed.")
 
-#1.4 所有患者
+#1.4 所有患者信息
 @app.route('/api/patients', methods=['GET'])
 def get_patients():
     conn = None
@@ -163,8 +163,11 @@ def get_patients():
         # 记录请求日志
         logger.info("Request to get all patients.")
 
+        patient_id = request.args.get('query')  # 获取 patient_id 参数
+
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
+
         # 注意：不查询 password
         # 【高级查询 2】：全称量词 / 关系除法 (Relational Division)
         # 逻辑：查找“去过所有科室”的患者(特别需要关注的病人)。
@@ -186,7 +189,14 @@ def get_patients():
             FROM patients p
         """
 
-        cursor.execute(sql)
+        # 如果有 patient_id，添加过滤条件
+        if patient_id:
+            sql += " WHERE p.id = %s"
+            params = (patient_id,)
+        else:
+            params = ()
+
+        cursor.execute(sql, params)
         rows = cursor.fetchall()
 
         # 映射字段 create_time -> createTime 并格式化日期
