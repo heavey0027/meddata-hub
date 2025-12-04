@@ -217,17 +217,22 @@ def get_patients():
         if conn: conn.close()
         logger.info("Database connection closed.")
 
-# 1.5 所有病历(基础 JOIN 查询)
+# 1.5 所有（或某个患者）病历(基础 JOIN 查询)
 @app.route('/api/records', methods=['GET'])
 def get_records():
     conn = None
     cursor = None
     try:
         # 记录请求日志
-        logger.info("Request to get all medical records.")
+        logger.info("Request to get medical records.")
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
+
+        # 获取查询参数
+        patient_id = request.args.get('patient_id')  # 获取 patient_id 参数
+
+        # 基本查询 SQL，关联患者和医生
         sql = """
             SELECT 
                 r.id, r.patient_id, p.name AS patient_name, 
@@ -237,7 +242,14 @@ def get_records():
             LEFT JOIN patients p ON r.patient_id = p.id
             LEFT JOIN doctors d ON r.doctor_id = d.id
         """
-        cursor.execute(sql)
+
+        # 如果提供了 patient_id 参数，限制查询该患者的记录
+        if patient_id:
+            sql += " WHERE r.patient_id = %s"
+            cursor.execute(sql, (patient_id,))
+        else:
+            cursor.execute(sql)
+
         rows = cursor.fetchall()
 
         # 记录查询日志
@@ -267,18 +279,34 @@ def get_records():
         logger.info("Database connection closed.")
 
 
-#1.6 所有处方细则(基础查询)
+#1.6 所有（或某个病历）处方细则(基础查询)
 @app.route('/api/prescription_details', methods=['GET'])
 def get_prescription_details():
     conn = None
     cursor = None
     try:
         # 记录请求日志
-        logger.info("Request to get all prescription details.")
+        logger.info("Request to get prescription details.")
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT id, record_id, medicine_id, dosage, usage_info, days FROM prescription_details")
+
+        # 获取查询参数
+        record_id = request.args.get('record_id')  # 获取 record_id 参数
+
+        # 基本查询 SQL
+        sql = """
+            SELECT id, record_id, medicine_id, dosage, usage_info, days 
+            FROM prescription_details
+        """
+
+        # 如果提供了 record_id 参数，限制查询该处方的细则
+        if record_id:
+            sql += " WHERE record_id = %s"
+            cursor.execute(sql, (record_id,))
+        else:
+            cursor.execute(sql)
+
         rows = cursor.fetchall()
 
         # 记录查询日志
@@ -295,16 +323,19 @@ def get_prescription_details():
                 "usage": row['usage_info'],
                 "days": row['days']
             })
-        print(data)
+
         return jsonify(data)
+
     except Exception as e:
         # 记录异常日志
         logger.error("Error occurred while fetching prescription details: %s", str(e))
-
         return jsonify({"error": str(e)}), 500
+
     finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
         logger.info("Database connection closed.")
 
 #1.7 获取预约数据(基础的多表连接)

@@ -295,10 +295,20 @@ export const deletePatient = async (id: string) => {
   }
 };
 
-export const getRecords = async (): Promise<MedicalRecord[]> => {
+export const getRecords = async (patientId?: string): Promise<MedicalRecord[]> => {
   const local = localStorage.getItem('meddata_records');
-  const fallback = local ? JSON.parse(local) : mockRecords;
-  return fetchWithFallback('/records', fallback);
+  let fallback = local ? JSON.parse(local) : mockRecords;
+  
+  if (patientId) {
+      fallback = fallback.filter((r: MedicalRecord) => r.patientId === patientId);
+  }
+  
+  let endpoint = '/records';
+  if (patientId) {
+      endpoint += `?patient_id=${patientId}`;
+  }
+
+  return fetchWithFallback(endpoint, fallback);
 };
 
 export const getDoctors = async (): Promise<Doctor[]> => {
@@ -313,10 +323,20 @@ export const getMedicines = async (): Promise<Medicine[]> => {
   return fetchWithFallback('/medicines', mockMedicines);
 };
 
-export const getPrescriptionDetails = async (): Promise<PrescriptionDetail[]> => {
+export const getPrescriptionDetails = async (recordId?: string): Promise<PrescriptionDetail[]> => {
   const local = localStorage.getItem('meddata_prescriptions');
-  const fallback = local ? JSON.parse(local) : mockPrescriptionDetails;
-  return fetchWithFallback('/prescription_details', fallback);
+  let fallback = local ? JSON.parse(local) : mockPrescriptionDetails;
+  
+  if (recordId) {
+      fallback = fallback.filter((d: PrescriptionDetail) => d.recordId === recordId);
+  }
+
+  let endpoint = '/prescription_details';
+  if (recordId) {
+      endpoint += `?record_id=${recordId}`;
+  }
+
+  return fetchWithFallback(endpoint, fallback);
 };
 
 // 3. Create Medical Record (POST /api/records)
@@ -593,19 +613,16 @@ export const getExistingPatient = async (appointment: Appointment): Promise<Pati
 };
 
 export const getFullPatientDetails = async (patientId: string) => {
-  const [records, details, medicines] = await Promise.all([
-    getRecords(),
-    getPrescriptionDetails(),
-    getMedicines()
-  ]);
+  // 1. Fetch Records filtered by Patient ID
+  const records = await getRecords(patientId);
+  const medicines = await getMedicines();
 
-  const patientRecords = records.filter(r => r.patientId === patientId);
-  patientRecords.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
+  records.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
 
-  return patientRecords.map(record => {
-    const recordDetails = details
-      .filter(d => d.recordId === record.id)
-      .map(d => {
+  // 2. Fetch details for each record (N+1 requests, as requested to use record_id)
+  const enrichedRecords = await Promise.all(records.map(async (record) => {
+      const details = await getPrescriptionDetails(record.id);
+      const recordDetails = details.map(d => {
         const med = medicines.find(m => m.id === d.medicineId);
         return { 
           ...d, 
@@ -614,8 +631,10 @@ export const getFullPatientDetails = async (patientId: string) => {
           medicineSpec: med?.specification
         };
       });
-    return { ...record, details: recordDetails };
-  });
+      return { ...record, details: recordDetails };
+  }));
+
+  return enrichedRecords;
 };
 
 export const getStats = async (): Promise<DashboardStats> => {
