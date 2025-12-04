@@ -323,6 +323,7 @@ def get_appointments():
         role = request.args.get('role')  # 获取 role 参数
         date = request.args.get('date')  # 获取 date 参数
         doctor_id = request.args.get('doctor_id')  # 获取 doctor_id 参数
+        patient_id = request.args.get('patient_id')  # 获取 patient_id 参数
 
         # 构建基本查询 SQL，关联医生和科室
         sql = """
@@ -333,8 +334,13 @@ def get_appointments():
             LEFT JOIN departments dept ON a.department_id = dept.id
         """
 
+        # 如果提供了 patient_id 参数，返回该患者所有 pending 状态的挂号记录
+        if patient_id:
+            sql += " WHERE a.patient_id = %s AND a.status = 'pending'"
+            cursor.execute(sql, (patient_id,))
+
         # 处理 role=admin 的情况，返回当天的所有挂号记录（包括 completed 和 pending）
-        if role == 'admin' and date:
+        elif role == 'admin' and date:
             sql += " WHERE DATE(a.create_time) = %s"
             cursor.execute(sql, (date,))
 
@@ -400,6 +406,7 @@ def get_appointments():
         if conn:
             conn.close()
         logger.info("Database connection closed.")
+
 
 #1.8 新增接口：根据年、月、日统计预约数据
 @app.route('/api/appointments/statistics', methods=['GET'])

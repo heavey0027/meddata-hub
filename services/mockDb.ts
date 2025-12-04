@@ -387,8 +387,13 @@ export const saveMedicalRecord = async (record: MedicalRecord, details: Prescrip
   }
 };
 
-// 4. Get Appointments
-export const getAppointments = async (doctorId?: string, queryRole?: UserRole, specificDate?: string): Promise<Appointment[]> => {
+// 4. Get Appointments (Updated for My Appointments)
+export const getAppointments = async (
+  doctorId?: string, 
+  queryRole?: UserRole, 
+  specificDate?: string,
+  patientId?: string
+): Promise<Appointment[]> => {
   const local = localStorage.getItem('meddata_appointments');
   let fallback = local ? JSON.parse(local) : mockAppointments;
 
@@ -400,76 +405,36 @@ export const getAppointments = async (doctorId?: string, queryRole?: UserRole, s
       fallback = fallback.filter((a: Appointment) => a.departmentId === doc.departmentId);
     }
   }
+
+  // Filter by Patient ID for "My Appointments"
+  if (patientId) {
+    fallback = fallback.filter((a: Appointment) => a.patientId === patientId);
+  }
+
   if (specificDate) {
-      // Mock filter by date string prefix (YYYY-MM-DD)
       fallback = fallback.filter((a: Appointment) => a.createTime.startsWith(specificDate));
   }
 
   // API Logic: Build query params
   let params = [];
   if (doctorId) params.push(`doctor_id=${doctorId}`);
+  if (patientId) params.push(`patient_id=${patientId}`);
   
   // If Admin is querying for dashboard, pass role and date
   if (queryRole === 'admin') {
       params.push(`role=admin`);
-      // If specificDate is provided, use it. Otherwise use today's date.
-      const dateToSend = specificDate || getLocalDate();
-      params.push(`date=${dateToSend}`);
+      // Update: Make date optional for admin to allow full history fetching
+      if (specificDate) {
+          params.push(`date=${specificDate}`);
+      }
+  } else {
+      // For doctor/patient view, pass date if provided
+      if (specificDate) params.push(`date=${specificDate}`);
   }
 
   const queryString = params.length > 0 ? `?${params.join('&')}` : '';
   const endpoint = `/appointments${queryString}`;
   return fetchWithFallback(endpoint, fallback);
-};
-
-// 7. Get Appointment Statistics (Aggregation)
-export const getAppointmentStatistics = async (date?: string): Promise<{ hour: number; count: number }[]> => {
-    // API Call Definition
-    // If date is provided, append it. If not, backend handles it as "all time" (or throws 400 if strictly following previous logic, but user requested client update).
-    let endpoint = `/appointments/statistics?role=admin`;
-    if (date) {
-        endpoint += `&date=${date}`;
-    }
-
-    // Mock Fallback Logic (Simulate Backend Aggregation)
-    const local = localStorage.getItem('meddata_appointments');
-    const allAppointments = local ? JSON.parse(local) : mockAppointments;
-    
-    let filtered = allAppointments;
-    if (date) {
-        filtered = allAppointments.filter((a: Appointment) => a.createTime.startsWith(date));
-    }
-    
-    // Determine multiplication factor to simulate larger volume for Year/Month view in Mock Mode
-    let multiplier = 1;
-    if (date) {
-        if (date.length === 4) multiplier = 100; // Year view: simulate 100x more data
-        if (date.length === 7) multiplier = 10;  // Month view: simulate 10x more data
-    } else {
-        // All time: simulate 200x
-        multiplier = 200;
-    }
-
-    // Group by hour
-    const hourlyCounts: Record<number, number> = {};
-    filtered.forEach((a: Appointment) => {
-        try {
-            // format: YYYY-MM-DD HH:mm:ss
-            const timePart = a.createTime.split(' ')[1];
-            if (timePart) {
-                const hour = parseInt(timePart.split(':')[0], 10);
-                if (!isNaN(hour)) {
-                    hourlyCounts[hour] = (hourlyCounts[hour] || 0) + 1 * multiplier;
-                }
-            }
-        } catch(e) {}
-    });
-
-    const mockStats = Object.entries(hourlyCounts)
-        .map(([hour, count]) => ({ hour: Number(hour), count }))
-        .sort((a, b) => a.hour - b.hour);
-
-    return fetchWithFallback(endpoint, mockStats);
 };
 
 // 5. Create Appointment (POST /api/appointments)
@@ -540,6 +505,39 @@ export const updateAppointmentStatus = async (id: string, status: 'completed' | 
         addLog('ERROR', 'API_FAIL', '更新挂号状态失败', e.message);
         throw e;
     }
+};
+
+// 7. Get Appointment Statistics (Hourly Trend)
+export const getAppointmentStatistics = async (date?: string): Promise<{ hour: number; count: number }[]> => {
+  // 1. Mock Mode Fallback Logic (Client-side aggregation)
+  const mockFallback = async () => {
+    // Determine scope based on date string length
+    // If no date, use a large multiplier to simulate all-time
+    const scopeMultiplier = !date ? 50 : (date.length === 4 ? 20 : (date.length === 7 ? 5 : 1));
+    
+    // Simulate API response structure [ { hour: 0, count: 5 }, ... ]
+    // Generate a bell curve peaking at 9am and 2pm
+    const trend = Array.from({ length: 24 }, (_, i) => {
+        let base = 0;
+        if (i >= 8 && i <= 11) base = Math.floor(Math.random() * 10) + 5; // Morning peak
+        if (i >= 13 && i <= 16) base = Math.floor(Math.random() * 8) + 4; // Afternoon peak
+        if (i < 8 || i > 18) base = Math.floor(Math.random() * 2); // Off hours
+        return { hour: i, count: base * scopeMultiplier };
+    });
+    return trend;
+  };
+
+  // 2. API Call
+  let queryString = `role=admin`;
+  if (date) {
+      queryString += `&date=${date}`;
+  }
+  const endpoint = `/appointments/statistics?${queryString}`;
+
+  // Using fetchWithFallback but passing the generated mock as fallback
+  const fallbackData = await mockFallback();
+  
+  return fetchWithFallback(endpoint, fallbackData);
 };
 
 // --- Logic Helpers ---

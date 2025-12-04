@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FileImage, MessageSquareText, Menu, X, Database, Layers, PieChart as PieChartIcon, ScrollText, CalendarPlus, History, UserCheck, LogOut, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Users, FileImage, MessageSquareText, Menu, X, Database, Layers, PieChart as PieChartIcon, ScrollText, CalendarPlus, History, UserCheck, LogOut, Clock, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { PatientList } from './components/PatientList';
 import { RadiologyAI } from './components/RadiologyAI';
@@ -12,6 +12,7 @@ import { SystemLogs } from './components/SystemLogs';
 import { AppointmentHall } from './components/AppointmentHall';
 import { PatientHistory } from './components/PatientHistory';
 import { DoctorConsultation } from './components/DoctorConsultation';
+import { MyAppointments } from './components/MyAppointments';
 import { Login } from './components/Login';
 import { checkBackendHealth } from './services/mockDb';
 import { addLog } from './services/logger';
@@ -136,6 +137,10 @@ const Layout = ({ children }: React.PropsWithChildren<{}>) => {
             <>
               <div className="text-xs font-semibold text-gray-400 px-4 mb-2 mt-6 uppercase whitespace-nowrap">患者服务</div>
               <SidebarLink to="/appointment" icon={<CalendarPlus className="h-5 w-5" />} label="自助挂号" />
+              {/* Only show My Appointments for patients */}
+              {user?.role === 'patient' && (
+                  <SidebarLink to="/my-appointments" icon={<Calendar className="h-5 w-5" />} label="我的预约" />
+              )}
               <SidebarLink to="/history" icon={<History className="h-5 w-5" />} label="我的就诊记录" />
               <SidebarLink to="/ask-ai" icon={<MessageSquareText className="h-5 w-5" />} label="智能导诊" />
             </>
@@ -234,6 +239,10 @@ const App: React.FC = () => {
           
           {/* Patient Routes */}
           <Route path="/appointment" element={<RequireAuth roles={['patient', 'admin']}><AppointmentHall /></RequireAuth>} />
+          
+          {/* Restrict My Appointments to Patient only */}
+          <Route path="/my-appointments" element={<RequireAuth roles={['patient']}><MyAppointments /></RequireAuth>} />
+          
           <Route path="/history" element={<RequireAuth roles={['patient', 'admin', 'doctor']}><PatientHistory /></RequireAuth>} />
           
           {/* Doctor Routes */}
