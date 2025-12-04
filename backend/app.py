@@ -161,12 +161,13 @@ def get_patients():
     cursor = None
     try:
         # 记录请求日志
-        # 获取 query 参数（可以是 patient_id 或其他查询字段）
-        query = request.args.get('query')
+        query = request.args.get('query')  # 获取查询参数，可能是 patient_id 或其他查询字段
+        limit = int(request.args.get('limit', 100))  # 默认每次返回 100 条数据
+        offset = int(request.args.get('offset', 0))  # 默认从第 0 条数据开始
 
         # 根据 query 参数决定日志内容
         if query:
-            logger.info(f"Request to get patient with query: {query}.")
+            logger.info(f"Request to get patients with query: {query}.")
         else:
             logger.info("Request to get all patients.")
 
@@ -197,11 +198,14 @@ def get_patients():
         """
 
         # 如果有 patient_id，添加过滤条件
+        params = []
         if patient_id:
             sql += " WHERE p.id = %s"
             params = (patient_id,)
-        else:
-            params = ()
+
+        # 添加分页参数
+        sql += " LIMIT %s OFFSET %s"
+        params += [limit, offset]
 
         cursor.execute(sql, params)
         rows = cursor.fetchall()
@@ -227,12 +231,14 @@ def get_patients():
     except Exception as e:
         # 记录异常日志
         logger.error("Error occurred while fetching patients: %s", str(e))
-
         return jsonify({"error": str(e)}), 500
     finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
         logger.info("Database connection closed.")
+
 
 # 1.5 所有（或某个患者）病历(基础 JOIN 查询)
 @app.route('/api/records', methods=['GET'])

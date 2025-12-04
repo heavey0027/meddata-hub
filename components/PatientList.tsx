@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { getPatients, createPatient, updatePatient, getFullPatientDetails, getDoctors, getMedicines, saveMedicalRecord } from '../services/mockDb';
 import { Patient, Doctor, Medicine, MedicalRecord, PrescriptionDetail } from '../types';
-import { Search, Plus, Trash2, Edit2, X, FileText, Pill, FilePlus, Crown } from 'lucide-react';
+import { Search, Plus, Trash2, Edit2, X, FileText, Pill, FilePlus, Crown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { addLog } from '../services/logger';
 
 // Helper for local YYYY-MM-DD
@@ -15,12 +15,15 @@ const getTodayStr = () => {
   return `${year}-${month}-${day}`;
 };
 
+const LIMIT = 100;
+
 export const PatientList: React.FC = () => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   
   const [searchTerm, setSearchTerm] = useState('');
+  const [offset, setOffset] = useState(0);
   
   // Patient Edit/Add Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -46,11 +49,11 @@ export const PatientList: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [offset]); // Re-fetch when page changes
 
   const loadData = async () => {
     const [pats, docs, meds] = await Promise.all([
-      getPatients(),
+      getPatients(LIMIT, offset),
       getDoctors(),
       getMedicines()
     ]);
@@ -206,7 +209,7 @@ export const PatientList: React.FC = () => {
           <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
           <input
             type="text"
-            placeholder="搜索患者姓名、ID或电话..."
+            placeholder="在当前页搜索患者姓名、ID或电话..."
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
             value={searchTerm}
             onChange={handleSearch}
@@ -268,8 +271,38 @@ export const PatientList: React.FC = () => {
                   </td>
                 </tr>
               ))}
+              {filteredPatients.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-6 py-8 text-center text-gray-400">
+                    当前页未找到匹配的患者信息
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
+        </div>
+        
+        {/* Pagination Controls */}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50">
+            <span className="text-sm text-gray-500">
+                当前显示第 {Math.floor(offset / LIMIT) + 1} 页 (每页 {LIMIT} 条)
+            </span>
+            <div className="flex gap-2">
+                <button
+                    onClick={() => setOffset(Math.max(0, offset - LIMIT))}
+                    disabled={offset === 0}
+                    className="flex items-center gap-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                    <ChevronLeft className="h-4 w-4" /> 上一页
+                </button>
+                <button
+                    onClick={() => setOffset(offset + LIMIT)}
+                    disabled={patients.length < LIMIT}
+                    className="flex items-center gap-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                    下一页 <ChevronRight className="h-4 w-4" />
+                </button>
+            </div>
         </div>
       </div>
 
