@@ -4,6 +4,7 @@ from db_utils import get_db_connection
 import logging
 from collections import defaultdict
 import datetime
+from Authentication import login
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -198,14 +199,14 @@ def get_patients():
         """
 
         # 如果有 patient_id，添加过滤条件
-        params = []
+        params = ()
         if patient_id:
             sql += " WHERE p.id = %s"
             params = (patient_id,)
 
         # 添加分页参数
         sql += " LIMIT %s OFFSET %s"
-        params += [limit, offset]
+        params += (limit, offset)
 
         cursor.execute(sql, params)
         rows = cursor.fetchall()
@@ -872,71 +873,8 @@ def update_appointment_status(apt_id):
 # ==========================================
 
 @app.route('/api/login', methods=['POST'])
-def login():
-    data = request.json
-    user_id = data.get('id')
-    password = data.get('password')
-    role = data.get('role')  # 'patient', 'doctor', 'admin'
-
-    conn = None
-    cursor = None
-
-    try:
-        # 1. 优先处理管理员登录 (无需查库)
-        if role == 'admin':
-            # 这里硬编码
-            if user_id == 'admin' and password == 'admin123':
-                logger.info("Admin login successful: %s", user_id)
-                return jsonify({
-                    "success": True,
-                    "token": "admin-session-token",
-                    "user": {"id": "admin", "name": "系统管理员", "role": "admin"}
-                })
-            else:
-                logger.warning("Admin login failed: %s", user_id)
-                return jsonify({"success": False, "message": "管理员认证失败"}), 401
-
-        # 2. 普通角色登录 (查询数据库)
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        table_name = ""
-        if role == 'patient':
-            table_name = "patients"
-        elif role == 'doctor':
-            table_name = "doctors"
-        else:
-            logger.warning("Invalid role: %s", role)
-            return jsonify({"success": False, "message": "无效的角色"}), 400
-
-        # 从数据库获取用户数据
-        sql = f"SELECT id, name FROM {table_name} WHERE id = %s AND password = %s"
-        cursor.execute(sql, (user_id, password))
-        user = cursor.fetchone()
-
-        if user:
-            logger.info("User login successful: %s, Role: %s", user_id, role)
-            return jsonify({
-                "success": True,
-                "token": f"token-{user_id}-{role}",
-                "user": {
-                    "id": user['id'],
-                    "name": user['name'],
-                    "role": role
-                }
-            })
-        else:
-            logger.warning("Password mismatch for user: %s", user_id)
-            return jsonify({"success": False, "message": "账号或密码错误"}), 401
-
-    except Exception as e:
-        logger.error("Login error: %s", e)
-        return jsonify({"success": False, "message": "服务器内部错误"}), 500
-
-    finally:
-        # 必须在 finally 中关闭资源
-        if cursor: cursor.close()
-        if conn: conn.close()
+def login_route():
+    return login()
 
 
 if __name__ == '__main__':
