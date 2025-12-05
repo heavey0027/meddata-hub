@@ -242,16 +242,18 @@ def get_gender_ratio():
 
         # 如果没有查询结果，返回空的性别比例
         if not rows:
-            return jsonify({"male": 0, "female": 0})
+            return jsonify({"male": 0, "female": 0, "other": 0})
 
         # 构建性别比例统计
-        gender_ratio = {"male": 0, "female": 0}
+        gender_ratio = {"male": 0, "female": 0, "other": 0}
         for row in rows:
             gender = row['gender']
             if gender == '男':
                 gender_ratio["male"] = row['count']
             elif gender == '女':
                 gender_ratio["female"] = row['count']
+            else:
+                gender_ratio["other"] = row['count']
 
         # 返回性别比例
         logging.info("gender_ratio:",gender_ratio)
