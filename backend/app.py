@@ -163,16 +163,14 @@ def get_patients():
     try:
         # 记录请求日志
         query = request.args.get('query')  # 获取查询参数，可能是 patient_id 或其他查询字段
-        limit = int(request.args.get('limit', 100))  # 默认每次返回 100 条数据
-        offset = int(request.args.get('offset', 0))  # 默认从第 0 条数据开始
+        limit = request.args.get('limit', type=int)
+        offset = request.args.get('offset',type=int)
 
         # 根据 query 参数决定日志内容
         if query:
             logger.info(f"Request to get patients with query: {query}.")
         else:
             logger.info("Request to get all patients.")
-
-        patient_id = request.args.get('query')  # 获取 patient_id 参数
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
@@ -198,15 +196,16 @@ def get_patients():
             FROM patients p
         """
 
-        # 如果有 patient_id，添加过滤条件
+        # 如果有 query 参数，添加过滤条件
         params = ()
-        if patient_id:
+        if query:
             sql += " WHERE p.id = %s"
-            params = (patient_id,)
+            params = (query,)
 
-        # 添加分页参数
-        sql += " LIMIT %s OFFSET %s"
-        params += (limit, offset)
+        # 只有在提供 limit 和 offset 时才加上分页限制
+        if limit:
+            sql += " LIMIT %s OFFSET %s"
+            params += (limit, offset)
 
         cursor.execute(sql, params)
         rows = cursor.fetchall()
@@ -519,8 +518,6 @@ def get_appointment_statistics():
         sql = """
             SELECT a.create_time
             FROM appointments a
-            LEFT JOIN doctors d ON a.doctor_id = d.id
-            LEFT JOIN departments dept ON a.department_id = dept.id
             {}
         """.format(time_condition)
 
@@ -536,16 +533,12 @@ def get_appointment_statistics():
         # 统计按小时分组
         hourly_stats = defaultdict(int)
         for row in rows:
-            # 确保 create_time 是 datetime 类型，并且处理微秒部分
             create_time = row['create_time']
             if isinstance(create_time, str):  # 如果是字符串，转换为 datetime
                 try:
-                    # 修改为支持微秒部分
                     create_time = datetime.datetime.strptime(create_time, '%Y-%m-%d %H:%M:%S.%f')
                 except ValueError as e:
-                    # 如果有微秒部分，就按照这个格式进行解析
                     create_time = datetime.datetime.strptime(create_time, '%Y-%m-%d %H:%M:%S')
-
             hour = create_time.hour
             hourly_stats[hour] += 1
 
@@ -571,6 +564,143 @@ def get_appointment_statistics():
         # 记录数据库连接关闭
         logger.info("Database connection closed.")
 
+
+@app.route('/api/patients/count', methods=['GET'])
+def get_patient_count():
+    conn = None
+    cursor = None
+    try:
+        # 记录请求日志
+        logger.info("Request to get total number of patients.")
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # SQL 查询患者总数
+        cursor.execute("SELECT COUNT(*) AS total FROM patients")
+        result = cursor.fetchone()
+
+        # 获取患者总数
+        total_patients = result['total'] if result else 0
+
+        # 返回 JSON 格式的结果
+        return jsonify({"total_patients": total_patients})
+
+    except Exception as e:
+        # 捕获并记录异常
+        logger.error("Error occurred while fetching total number of patients: %s", str(e))
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        # 确保资源被关闭
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+        logger.info("Database connection closed.")
+
+@app.route('/api/patients/gender_ratio', methods=['GET'])
+def get_gender_ratio():
+    conn = None
+    cursor = None
+    try:
+        # 记录请求日志
+        logger.info("Request to get patient gender ratio.")
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # SQL 查询按性别分组统计患者数量
+        cursor.execute("""
+            SELECT gender, COUNT(*) AS count
+            FROM patients
+            GROUP BY gender
+        """)
+        rows = cursor.fetchall()
+
+        # 如果没有查询结果，返回空的性别比例
+        if not rows:
+            return jsonify({"male": 0, "female": 0, "other": 0})
+
+        # 构建性别比例统计
+        gender_ratio = {"male": 0, "female": 0, "other": 0}
+        for row in rows:
+            gender = row['gender']
+            if gender == 'M':
+                gender_ratio["male"] = row['count']
+            elif gender == 'F':
+                gender_ratio["female"] = row['count']
+            else:
+                gender_ratio["other"] = row['count']
+
+        # 返回性别比例
+        return jsonify(gender_ratio)
+
+    except Exception as e:
+        # 捕获并记录异常
+        logger.error("Error occurred while fetching patient gender ratio: %s", str(e))
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        # 确保资源被关闭
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+        logger.info("Database connection closed.")
+
+@app.route('/api/patients/age_ratio', methods=['GET'])
+def get_age_ratio():
+    conn = None
+    cursor = None
+    try:
+        # 记录请求日志
+        logger.info("Request to get patient age ratio.")
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # SQL 查询按年龄段分组统计患者数量
+        cursor.execute("""
+            SELECT 
+                CASE
+                    WHEN age BETWEEN 0 AND 18 THEN '青少年'
+                    WHEN age BETWEEN 19 AND 35 THEN '青年'
+                    WHEN age BETWEEN 36 AND 60 THEN '中年'
+                    WHEN age > 60 THEN '老年'
+                    ELSE '未知'
+                END AS age_group,
+                COUNT(*) AS count
+            FROM patients
+            GROUP BY age_group
+        """)
+        rows = cursor.fetchall()
+
+        # 如果没有查询结果，返回空的年龄比例
+        if not rows:
+            return jsonify({"青少年": 0, "青年": 0, "中年": 0, "老年": 0})
+
+        # 构建年龄比例统计
+        age_ratio = {"青少年": 0, "青年": 0, "中年": 0, "老年": 0}
+        for row in rows:
+            age_group = row['age_group']
+            age_ratio[age_group] = row['count']
+
+        # 返回年龄比例
+        return jsonify(age_ratio)
+
+    except Exception as e:
+        # 捕获并记录异常
+        logger.error("Error occurred while fetching patient age ratio: %s", str(e))
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        # 确保资源被关闭
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+        logger.info("Database connection closed.")
 
 # ==========================================
 # 2. 写接口 (POST/PUT Requests)- 植入合法性校验
