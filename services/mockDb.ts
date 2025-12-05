@@ -198,9 +198,12 @@ export const getPatients = async (limit?: number, offset?: number): Promise<Pati
   const allPatients = local ? JSON.parse(local) : mockPatients;
   
   // Local Mock Pagination
+  // Modified logic: ONLY slice if limit is explicitly provided.
+  // If limit is undefined (e.g. Dashboard/Stats calls), return ALL patients.
   let fallback = allPatients;
-  if (limit !== undefined && offset !== undefined) {
-      fallback = allPatients.slice(offset, offset + limit);
+  if (limit !== undefined) {
+      const start = offset || 0;
+      fallback = allPatients.slice(start, start + limit);
   }
 
   // API Request Construction
@@ -216,13 +219,73 @@ export const getPatients = async (limit?: number, offset?: number): Promise<Pati
   return fetchWithFallback(endpoint, fallback);
 };
 
+// Optimize for total count retrieval
+export const getPatientCount = async (): Promise<number> => {
+  const local = localStorage.getItem('meddata_patients');
+  const count = local ? JSON.parse(local).length : mockPatients.length;
+  
+  // Expecting backend to return { total_patients: number }
+  const response = await fetchWithFallback<any>('/patients/count', { total_patients: count });
+  return typeof response === 'number' ? response : (response.total_patients ?? response.count ?? count);
+};
+
+// Fetch Patient Gender Ratio stats
+const getPatientGenderStats = async (): Promise<{name: string, value: number}[]> => {
+    // Local Fallback
+    const local = localStorage.getItem('meddata_patients');
+    const allPatients = local ? JSON.parse(local) : mockPatients;
+    const fallbackStats = allPatients.reduce((acc: any, p: Patient) => {
+        if (p.gender === '男') acc.male++;
+        else if (p.gender === '女') acc.female++;
+        else acc.other++;
+        return acc;
+    }, { male: 0, female: 0, other: 0 });
+
+    // API Call
+    const data = await fetchWithFallback<any>('/patients/gender_ratio', fallbackStats);
+
+    // Map Backend Keys (male, female, other) to Frontend Display Keys
+    // Note: Backend might return { male: 0, female: 0, other: X } if database uses '男'/'女' but backend logic expects 'M'/'F'
+    return [
+        { name: '男', value: data.male || 0 },
+        { name: '女', value: data.female || 0 },
+        { name: '未知性别', value: data.other || 0 }
+    ];
+};
+
+// Fetch Patient Age Ratio stats
+const getPatientAgeStats = async (): Promise<{name: string, value: number}[]> => {
+    // Local Fallback
+    const local = localStorage.getItem('meddata_patients');
+    const allPatients = local ? JSON.parse(local) : mockPatients;
+    const fallbackStats = { '青少年': 0, '青年': 0, '中年': 0, '老年': 0 };
+    
+    allPatients.forEach((p: Patient) => {
+        if (p.age <= 18) fallbackStats['青少年']++;
+        else if (p.age <= 35) fallbackStats['青年']++;
+        else if (p.age <= 60) fallbackStats['中年']++;
+        else fallbackStats['老年']++;
+    });
+
+    // API Call: Returns { "青少年": x, "青年": y, ... }
+    const data = await fetchWithFallback<any>('/patients/age_ratio', fallbackStats);
+
+    // Map Backend Keys to Detailed Frontend Display Keys
+    return [
+        { name: '0-18岁 (青少年)', value: data['青少年'] || 0 },
+        { name: '19-35岁 (青年)', value: data['青年'] || 0 },
+        { name: '36-60岁 (中年)', value: data['中年'] || 0 },
+        { name: '60岁以上 (老年)', value: data['老年'] || 0 }
+    ];
+};
+
 // 1. Create Patient (POST /api/patients)
 export const createPatient = async (patient: Patient) => {
   // Ensure createTime is set to current browser date
   patient.createTime = getLocalDate();
 
   // Local persistence for fallback
-  const current = await getPatients(); // gets all if no params
+  const current = await getPatients(); // Calls with no params -> Gets ALL, which is correct for re-saving
   localStorage.setItem('meddata_patients', JSON.stringify([...current, patient]));
   
   const url = `${API_BASE_URL}/patients?_t=${Date.now()}`;
@@ -663,8 +726,8 @@ export const getFullPatientDetails = async (patientId: string) => {
 };
 
 export const getStats = async (): Promise<DashboardStats> => {
-  const [patients, records, doctors, departments, medicines] = await Promise.all([
-    getPatients(), getRecords(), getDoctors(), getDepartments(), getMedicines()
+  const [totalPatients, records, doctors, departments, medicines] = await Promise.all([
+    getPatientCount(), getRecords(), getDoctors(), getDepartments(), getMedicines()
   ]);
   
   const diagnosisCounts = records.reduce((acc, r) => {
@@ -689,12 +752,13 @@ export const getStats = async (): Promise<DashboardStats> => {
   const lowStock = medicines.filter(m => m.stock < 100);
   const recent = [...records].sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime()).slice(0, 5);
   
-  // Calculate VIP Patients (Mock logic: In a real app this might come from backend, 
-  // but for mock/demo we use the field we added to mockPatients)
-  const vipPatients = patients.filter(p => p.isVip);
+  // Note: We are now using getPatientCount() which only returns the number.
+  // Since we are optimizing not to fetch all patients, 'vipPatients' logic 
+  // (filtering filtering all patients by isVip) is disabled here as it's not used in the Dashboard UI.
+  const vipPatients: Patient[] = [];
 
   return {
-    totalPatients: patients.length,
+    totalPatients: totalPatients,
     totalVisits: records.length,
     totalDoctors: doctors.length,
     totalMedicines: medicines.length,
@@ -707,31 +771,23 @@ export const getStats = async (): Promise<DashboardStats> => {
 };
 
 export const getPatientDemographics = async (): Promise<PatientDemographics> => {
-  const [patients, records, doctors, departments] = await Promise.all([
-      getPatients(), getRecords(), getDoctors(), getDepartments()
+  const [totalPatients, genderDist, ageDist, records, doctors, departments] = await Promise.all([
+      getPatientCount(),
+      getPatientGenderStats(), // Use specialized endpoint
+      getPatientAgeStats(),    // Use specialized endpoint
+      getRecords(), 
+      getDoctors(), 
+      getDepartments()
   ]);
 
-  const genderCount = patients.reduce((acc, p) => {
-      acc[p.gender] = (acc[p.gender] || 0) + 1;
-      return acc;
-  }, {} as Record<string, number>);
-  const genderDist = Object.entries(genderCount).map(([name, value]) => ({ name, value }));
-
-  const ageGroups = { '0-18岁 (青少年)': 0, '19-35岁 (青年)': 0, '36-60岁 (中年)': 0, '60岁以上 (老年)': 0 };
-  patients.forEach(p => {
-      if (p.age <= 18) ageGroups['0-18岁 (青少年)']++;
-      else if (p.age <= 35) ageGroups['19-35岁 (青年)']++;
-      else if (p.age <= 60) ageGroups['36-60岁 (中年)']++;
-      else ageGroups['60岁以上 (老年)']++;
-  });
-  const ageDist = Object.entries(ageGroups).map(([name, value]) => ({ name, value }));
-
+  // Diagnosis distribution logic (still relies on records)
   const diagCount = records.reduce((acc, r) => {
       acc[r.diagnosis] = (acc[r.diagnosis] || 0) + 1;
       return acc;
   }, {} as Record<string, number>);
   const diagDist = Object.entries(diagCount).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value).slice(0, 10);
 
+  // Department visits logic (still relies on records)
   const deptCount: Record<string, number> = {};
   records.forEach(r => {
        const doc = doctors.find(d => d.id === r.doctorId);
@@ -743,10 +799,10 @@ export const getPatientDemographics = async (): Promise<PatientDemographics> => 
   const deptDist = Object.entries(deptCount).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value).slice(0, 10);
 
   return {
-      totalPatients: patients.length,
+      totalPatients: totalPatients, 
       totalVisits: records.length,
-      genderDistribution: genderDist,
-      ageDistribution: ageDist,
+      genderDistribution: genderDist, 
+      ageDistribution: ageDist, 
       diagnosisDistribution: diagDist,
       deptVisits: deptDist
   };

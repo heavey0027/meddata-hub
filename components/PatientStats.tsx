@@ -156,9 +156,12 @@ export const PatientStats: React.FC = () => {
                    dataKey="value"
                    label
                  >
-                   {stats.genderDistribution.map((entry, index) => (
-                     <Cell key={`cell-${index}`} fill={entry.name === '男' ? '#3B82F6' : '#EC4899'} />
-                   ))}
+                   {stats.genderDistribution.map((entry, index) => {
+                      let color = '#9CA3AF'; // Default for Unknown (Gray)
+                      if (entry.name === '男') color = '#3B82F6'; // Blue
+                      else if (entry.name === '女') color = '#EC4899'; // Pink
+                      return <Cell key={`cell-${index}`} fill={color} />;
+                   })}
                  </Pie>
                  <RechartsTooltip />
                  <Legend />
