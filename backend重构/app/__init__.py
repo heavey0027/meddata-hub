@@ -44,6 +44,7 @@ def create_app():
     from app.api.patient import patient_bp
     from app.api.record import record_bp
     from app.api.appointment import appointment_bp
+    from app.api.stats import stats_bp
 
     # 统一添加前缀，或者在各蓝图中定义
     app.register_blueprint(auth_bp)  # /api/login
@@ -52,6 +53,7 @@ def create_app():
     app.register_blueprint(patient_bp)  # /api/patients
     app.register_blueprint(record_bp)  # /api/records
     app.register_blueprint(appointment_bp)  # /api/appointments
+    app.register_blueprint(stats_bp) # /api/stats
 
     @app.route('/')
     def index():
