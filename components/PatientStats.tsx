@@ -1,35 +1,211 @@
-
 import React, { useEffect, useState } from 'react';
 import { 
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
-  AreaChart, Area
+  AreaChart, Area, Sankey, Tooltip, Layer, Rectangle
 } from 'recharts';
-import { getPatientDemographics, getAppointmentStatistics, getLocalDate } from '../services/mockDb';
+import { getPatientDemographics, getAppointmentStatistics, getLocalDate, getSankeyData } from '../services/mockDb';
 import { PatientDemographics } from '../types';
-import { Users, FileText, Activity, Layers, ArrowUpRight, Clock, Calendar, Filter } from 'lucide-react';
+import { Users, FileText, Activity, ArrowUpRight, Clock, Filter, GitMerge } from 'lucide-react';
 
-const COLORS = ['#3B82F6', '#EC4899', '#10B981', '#F59E0B', '#8B5CF6', '#6366F1'];
+const SANKEY_PALETTE = [
+  '#6366F1', '#EC4899', '#10B981', '#F59E0B', '#3B82F6', '#8B5CF6', 
+  '#14B8A6', '#F43F5E', '#0EA5E9', '#84CC16', '#D946EF', '#EAB308'
+];
+
+// --- 核心逻辑：计算下沉偏移量 ---
+// 根据 x 坐标（层级）决定向下移动多少像素
+// 这实现了 "往下走点" 的需求，打破了默认的垂直居中
+const getVerticalShift = (x: number) => {
+  if (isNaN(x)) return 0;
+  // 假设画布宽度约 1000px
+  // 第一列 (挂号) x~0: 不动
+  if (x < 200) return 20; 
+  // 第二列 (科室) x~250-400: 下移一点
+  if (x < 500) return 80; 
+  // 第三列 (诊断) x~500-700: 再下移
+  if (x < 750) return 160; 
+  // 第四列 (开药/治疗) x>750: 沉底对齐
+  return 240; 
+};
+
+// 1. 自定义节点 (带垂直偏移)
+const MyCustomNode = (props: any) => {
+  const { x, y, width, height, index, payload, containerWidth } = props;
+  
+  if (isNaN(x) || isNaN(y) || !payload) return null;
+
+  const isOut = x + width + 50 > (containerWidth || 800); 
+  
+  // 获取该层级的下沉偏移量
+  const shiftY = getVerticalShift(x);
+  const finalY = y + shiftY;
+
+  return (
+    <Layer key={`node-${index}`}>
+      <Rectangle
+        x={x}
+        y={finalY} // 应用下沉
+        width={width}
+        height={height}
+        fill={payload.fill || '#8884d8'}
+        fillOpacity="1"
+        radius={[4, 4, 4, 4]}
+        stroke="#fff"
+        strokeWidth={1}
+        style={{ filter: 'drop-shadow(0px 3px 4px rgba(0,0,0,0.25))' }}
+      />
+      <text
+        x={isOut ? x - 8 : x + width + 8}
+        y={finalY + height / 2} // 文字跟随下沉
+        dy={4}
+        textAnchor={isOut ? 'end' : 'start'}
+        fontSize={13}
+        fontWeight="bold"
+        fill="#374151"
+        style={{ pointerEvents: 'none' }}
+      >
+        {payload.name} ({payload.value})
+      </text>
+    </Layer>
+  );
+};
+
+// 2. 自定义链路 (跟随节点下沉重绘曲线)
+const MyCustomLink = (props: any) => {
+  const { sourceX, targetX, sourceY, targetY, sourceControlX, targetControlX, linkWidth, index, payload } = props;
+  
+  if (isNaN(sourceX) || isNaN(targetX)) return null;
+
+  const sourceColor = (payload.source && payload.source.fill) ? payload.source.fill : '#cbd5e1';
+
+  // 分别计算起点和终点的偏移量，确保连线平滑过渡
+  const sourceShift = getVerticalShift(sourceX);
+  const targetShift = getVerticalShift(targetX);
+
+  const sy = sourceY + sourceShift;
+  const ty = targetY + targetShift;
+
+  // 重新构建贝塞尔曲线路径
+  // 保持水平控制点 x 不变，但 y 坐标需要跟随 shift
+  const linkPath = `
+    M${sourceX},${sy}
+    C${sourceControlX},${sy} ${targetControlX},${ty} ${targetX},${ty}
+    L${targetX},${ty + linkWidth}
+    C${targetControlX},${ty + linkWidth} ${sourceControlX},${sy + linkWidth} ${sourceX},${sy + linkWidth}
+    Z
+  `;
+
+  return (
+    <Layer key={`link-${index}`}>
+      <path
+        d={linkPath}
+        fill={sourceColor}
+        fillOpacity={0.4} 
+        onMouseEnter={(e) => { e.currentTarget.style.fillOpacity = '0.75'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.fillOpacity = '0.4'; }}
+        style={{ transition: 'fill-opacity 0.25s ease-in-out', cursor: 'pointer' }}
+      />
+    </Layer>
+  );
+};
+
+// 3. Tooltip
+const CustomSankeyTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    const isLink = data.source && data.target;
+
+    if (isLink) {
+        return (
+          <div className="bg-white p-3 border border-gray-100 shadow-xl rounded-lg text-sm z-50">
+            <div className="font-bold text-gray-700 mb-1 flex items-center gap-2">
+               <div className="w-2 h-2 rounded-full" style={{backgroundColor: data.source?.fill || '#ccc'}}></div>
+               <span>{data.source?.name}</span> 
+               <span className="text-gray-400">→</span> 
+               <div className="w-2 h-2 rounded-full" style={{backgroundColor: data.target?.fill || '#ccc'}}></div>
+               <span>{data.target?.name}</span>
+            </div>
+            <p className="text-blue-600 font-semibold pl-4">
+               流量: {data.value} 人次
+            </p>
+          </div>
+        );
+    } else {
+        return (
+            <div className="bg-white p-3 border border-gray-100 shadow-xl rounded-lg text-sm z-50">
+               <p className="font-bold text-gray-800" style={{color: data.fill}}>{data.name}</p>
+               <p className="text-gray-500">总计: {data.value} 人次</p>
+            </div>
+        )
+    }
+  }
+  return null;
+};
+
+// --- 主组件 ---
 
 export const PatientStats: React.FC = () => {
   const [stats, setStats] = useState<PatientDemographics | null>(null);
-  
-  // Trend State
+  const [sankeyData, setSankeyData] = useState<{ nodes: any[], links: any[] }>({ nodes: [], links: [] });
   const [timeScope, setTimeScope] = useState<'day' | 'month' | 'year' | 'all'>('day');
   const [dateValue, setDateValue] = useState<string>(getLocalDate());
-  
   const [hourlyTrend, setHourlyTrend] = useState<{hour: string, value: number}[]>([]);
   const [loadingTrend, setLoadingTrend] = useState(false);
 
-  // Initialize Data
   useEffect(() => {
     const loadStats = async () => {
-      const data = await getPatientDemographics();
-      setStats(data);
+      try {
+        const data = await getPatientDemographics();
+        setStats(data);
+      } catch (e) { console.error(e); }
     };
+
+    const loadSankey = async () => {
+      try {
+        const raw = await getSankeyData();
+        const transformed = transformSankeyData(raw);
+        setSankeyData(transformed);
+      } catch (e) {
+        console.error("Failed to load Sankey Data", e);
+        setSankeyData({ nodes: [], links: [] });
+      }
+    };
+
     loadStats();
+    loadSankey();
   }, []);
 
-  // Handle Scope Change (Reset default values)
+  const transformSankeyData = (data: any) => {
+      if (!data || !data.nodes || !data.links) return { nodes: [], links: [] };
+
+      const { nodes, links } = data;
+      const nodeMap = new Map();
+      
+      const coloredNodes = nodes.map((node: any, index: number) => {
+          nodeMap.set(node.name, index);
+          return {
+              ...node,
+              fill: SANKEY_PALETTE[index % SANKEY_PALETTE.length]
+          };
+      });
+
+      const transformedLinks = links.map((link: any) => ({
+          source: nodeMap.get(link.source),
+          target: nodeMap.get(link.target),
+          value: link.value
+      })).filter((l: any) => 
+          l.source !== undefined && 
+          l.target !== undefined && 
+          l.source !== l.target 
+      );
+      
+      if (coloredNodes.length === 0 || transformedLinks.length === 0) {
+          return { nodes: [], links: [] };
+      }
+
+      return { nodes: coloredNodes, links: transformedLinks };
+  };
+
   const handleScopeChange = (scope: 'day' | 'month' | 'year' | 'all') => {
     setTimeScope(scope);
     const now = new Date();
@@ -41,25 +217,19 @@ export const PatientStats: React.FC = () => {
     } else if (scope === 'year') {
         setDateValue(String(now.getFullYear()));
     } else {
-        // For 'all', we don't strictly need a dateValue, but keeping it empty or as is
         setDateValue('');
     }
   };
 
-  // Fetch trend data whenever dateValue or timeScope changes
   useEffect(() => {
     const fetchHourlyData = async () => {
-        // If not 'all', we need a valid dateValue
         if (timeScope !== 'all' && !dateValue) return;
         
         setLoadingTrend(true);
         try {
-            // Backend supports: 2023-10-01 (Day), 2023-10 (Month), 2023 (Year)
-            // If 'all', pass undefined
             const queryDate = timeScope === 'all' ? undefined : dateValue;
             const rawStats = await getAppointmentStatistics(queryDate);
             
-            // Map sparse data to full 24h timeline
             const full24Hours = new Array(24).fill(0).map((_, i) => {
                 const found = rawStats.find(s => s.hour === i);
                 return {
@@ -79,7 +249,6 @@ export const PatientStats: React.FC = () => {
     fetchHourlyData();
   }, [dateValue, timeScope]);
 
-  // Generate Year Options (Last 5 years)
   const renderYearOptions = () => {
       const currentYear = new Date().getFullYear();
       const years = [];
@@ -157,9 +326,9 @@ export const PatientStats: React.FC = () => {
                    label
                  >
                    {stats.genderDistribution.map((entry, index) => {
-                      let color = '#9CA3AF'; // Default for Unknown (Gray)
-                      if (entry.name === '男') color = '#3B82F6'; // Blue
-                      else if (entry.name === '女') color = '#EC4899'; // Pink
+                      let color = '#9CA3AF';
+                      if (entry.name === '男') color = '#3B82F6';
+                      else if (entry.name === '女') color = '#EC4899';
                       return <Cell key={`cell-${index}`} fill={color} />;
                    })}
                  </Pie>
@@ -183,15 +352,13 @@ export const PatientStats: React.FC = () => {
                  <XAxis type="number" hide />
                  <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 12}} />
                  <RechartsTooltip />
-                 <Bar dataKey="value" name="人数" fill="#F59E0B" radius={[0, 4, 4, 0]} barSize={24}>
-                    {/* Add labels inside bar */}
-                 </Bar>
+                 <Bar dataKey="value" name="人数" fill="#F59E0B" radius={[0, 4, 4, 0]} barSize={24} />
                </BarChart>
              </ResponsiveContainer>
            </div>
         </div>
 
-        {/* Diagnosis (Visits & Disease Types) */}
+        {/* Diagnosis */}
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 lg:col-span-2">
            <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
               <Activity className="h-5 w-5 text-red-500" />
@@ -211,7 +378,7 @@ export const PatientStats: React.FC = () => {
            </div>
         </div>
 
-         {/* Hourly Registration Trend (Replaces Department Visits) */}
+         {/* Hourly Trend */}
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 lg:col-span-2">
            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
               <div className="flex flex-col">
@@ -227,7 +394,6 @@ export const PatientStats: React.FC = () => {
               <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-lg border border-gray-200">
                  <Filter className="h-4 w-4 text-gray-400 ml-1" />
                  
-                 {/* Scope Selector */}
                  <select 
                     className="bg-transparent text-sm font-semibold text-gray-700 px-2 py-1 outline-none cursor-pointer border-r border-gray-300"
                     value={timeScope}
@@ -239,7 +405,6 @@ export const PatientStats: React.FC = () => {
                     <option value="all">全部数据</option>
                  </select>
 
-                 {/* Dynamic Date Input */}
                  {timeScope !== 'all' && (
                  <div className="pl-2">
                     {timeScope === 'day' && (
@@ -308,6 +473,38 @@ export const PatientStats: React.FC = () => {
              <div className="text-center text-xs text-gray-400 mt-2">
                 统计维度: 00:00 - 23:00 (反映该时间范围内的运营高峰)
              </div>
+           </div>
+        </div>
+
+        {/* 桑基图 (阶梯式下沉布局) */}
+        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 lg:col-span-2">
+           <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
+              <GitMerge className="h-5 w-5 text-teal-600 transform rotate-90" />
+              医院运营全流程桑基图 (Sankey Flow Analysis)
+           </h3>
+           <p className="text-xs text-gray-400 mb-4 ml-7 -mt-4">
+              展示从“挂号 - 诊疗 - 处方 - 取药”的全链路数据流向，<span className="text-orange-500 font-semibold">布局呈阶梯式下沉，反映流程深入程度。</span>
+           </p>
+           <div className="h-[1000px]">
+             {sankeyData.nodes.length > 0 && sankeyData.links.length > 0 ? (
+               <ResponsiveContainer width="100%" height="100%">
+                 <Sankey
+                   data={sankeyData}
+                   nodeWidth={24}
+                   nodePadding={90}
+                   margin={{ left: 20, right: 20, top: 100, bottom: 100 }}
+                   linkCurvature={0.5}
+                   link={<MyCustomLink />}
+                   node={<MyCustomNode containerWidth={1000} />}
+                 >
+                   <Tooltip content={<CustomSankeyTooltip />} />
+                 </Sankey>
+               </ResponsiveContainer>
+             ) : (
+               <div className="flex items-center justify-center h-full text-gray-400 text-sm bg-gray-50 rounded-lg">
+                 <p>暂无流转数据</p>
+               </div>
+             )}
            </div>
         </div>
       </div>

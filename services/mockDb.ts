@@ -640,6 +640,34 @@ export const getAppointmentStatistics = async (date?: string): Promise<{ hour: n
   return fetchWithFallback(endpoint, fallbackData);
 };
 
+// 8. Get Sankey Data for Flow Analysis
+export const getSankeyData = async () => {
+  // Construct a fallback that mimics expected backend structure: { nodes: [], links: [] }
+  const mockNodes = [
+    { name: "挂号总数" },
+    { name: "科室: 心内科" },
+    { name: "科室: 呼吸科" },
+    { name: "确诊/检查" },
+    { name: "开药/治疗" },
+    { name: "离院/康复" }
+  ];
+
+  // Links with source/target as NAMES (string)
+  const mockLinks = [
+    { source: "挂号总数", target: "科室: 心内科", value: 50 },
+    { source: "挂号总数", target: "科室: 呼吸科", value: 30 },
+    { source: "科室: 心内科", target: "确诊/检查", value: 45 },
+    { source: "科室: 呼吸科", target: "确诊/检查", value: 25 },
+    { source: "确诊/检查", target: "开药/治疗", value: 60 },
+    { source: "确诊/检查", target: "离院/康复", value: 10 },
+    { source: "开药/治疗", target: "离院/康复", value: 60 }
+  ];
+
+  const mockData = { nodes: mockNodes, links: mockLinks };
+
+  return fetchWithFallback('/stats/sankey', mockData);
+};
+
 // --- Logic Helpers ---
 
 export const findPatientByQuery = async (query: string | undefined | null): Promise<Patient | undefined> => {
