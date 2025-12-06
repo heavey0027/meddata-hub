@@ -122,6 +122,8 @@ def get_patient_flow_sankey():
                 "value": no_med_count
             })
 
+        logging.info(f"Nodes: {nodes}")
+        logging.info(f"Links: {links}")
         return jsonify({"nodes": nodes, "links": links})
 
     except Exception as e:

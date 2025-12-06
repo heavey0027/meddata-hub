@@ -206,6 +206,7 @@ def get_patient_count():
         total_patients = result['total'] if result else 0
 
         # 返回 JSON 格式的结果
+        logging.info(f"Total patients fetched: {total_patients}")
         return jsonify({"total_patients": total_patients})
 
     except Exception as e:
@@ -256,7 +257,7 @@ def get_gender_ratio():
                 gender_ratio["other"] = row['count']
 
         # 返回性别比例
-        logging.info("gender_ratio:",gender_ratio)
+        logging.info("gender_ratio: %s",gender_ratio)
         return jsonify(gender_ratio)
 
     except Exception as e:
@@ -310,6 +311,7 @@ def get_age_ratio():
             age_ratio[age_group] = row['count']
 
         # 返回年龄比例
+        logging.info("age_ratio: %s",age_ratio)
         return jsonify(age_ratio)
 
     except Exception as e:
