@@ -432,6 +432,7 @@ def get_appointments():
 
             data.append({
                 "id": row['appointment_id'],
+                "patientId": row['patient_id'],
                 "patientName": patient['name'],
                 "patientPhone": patient['phone'],
                 "age": patient['age'],
