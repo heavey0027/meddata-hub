@@ -1,5 +1,5 @@
 # --- START OF FILE app/api/doctor.py ---
-from flask import Blueprint, jsonify
+from flask import Blueprint, request, jsonify
 from app.utils.db import get_db_connection
 import logging
 
@@ -58,3 +58,58 @@ def get_doctors():
         if cursor: cursor.close()
         if conn: conn.close()
         logger.info("Database connection closed.")
+
+# DELETE: 删除医生 - 最简逻辑：若有病历/挂号关联，则无法删除。
+@doctor_bp.route('/api/doctors/<string:doctor_id>', methods=['DELETE'])
+def delete_doctor(doctor_id):
+    conn = None
+    cursor = None
+    try:
+        logger.info("Request to delete doctor with ID: %s (simple logic).", doctor_id)
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # 1. 检查该医生是否有任何相关的挂号记录 (ANY status)
+        cursor.execute("SELECT COUNT(*) FROM appointments WHERE doctor_id = %s", (doctor_id,))
+        appointment_count = cursor.fetchone()[0]
+
+        if appointment_count > 0:
+            logger.warning(
+                "Attempt to delete doctor %s failed: Doctor has %d associated appointments (any status).",
+                doctor_id, appointment_count
+            )
+            return jsonify({"success": False, "message": "无法删除：该医生仍有关联的挂号记录。请先处理相关挂号。"}), 400
+
+        # 2. 检查该医生是否有任何相关的病历记录
+        cursor.execute("SELECT COUNT(*) FROM medical_records WHERE doctor_id = %s", (doctor_id,))
+        record_count = cursor.fetchone()[0]
+
+        if record_count > 0:
+            logger.warning(
+                "Attempt to delete doctor %s failed: Doctor has %d associated medical records.",
+                doctor_id, record_count
+            )
+            return jsonify({"success": False, "message": "无法删除：该医生仍有关联的病历记录。请先处理相关病历。"}), 400
+
+        # 3. 如果没有关联记录，则执行删除医生操作
+        cursor.execute("DELETE FROM doctors WHERE id = %s", (doctor_id,))
+        if cursor.rowcount == 0:
+            conn.rollback()
+            logger.warning("Doctor with ID %s not found for deletion.", doctor_id)
+            return jsonify({"success": False, "message": "医生不存在或已删除。"}), 404
+
+        conn.commit()
+        logger.info("Doctor with ID %s deleted successfully (simple logic).", doctor_id)
+        return jsonify({"success": True, "message": "医生删除成功。"}), 200
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error("Error deleting doctor %s: %s", doctor_id, str(e))
+        return jsonify({"success": False, "message": str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+        logger.info("Database connection closed for doctor deletion.")
