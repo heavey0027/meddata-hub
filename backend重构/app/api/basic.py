@@ -6,7 +6,7 @@ import logging
 basic_bp = Blueprint('basic', __name__)
 logger = logging.getLogger(__name__)
 
-# 1.1 所有部门(基础下拉框)
+# 1.1 所有科室(基础下拉框)
 @basic_bp.route('/api/departments', methods=['GET'])
 def get_departments():
     conn = None
@@ -33,7 +33,46 @@ def get_departments():
         if cursor: cursor.close()
         if conn: conn.close()
         logger.info("Database connection closed.")
-        
+
+# 查看科室详情（包含医生数量）
+@basic_bp.route('/api/departments/<string:department_id>', methods=['GET'])
+def get_department_detail(department_id):
+    conn = None
+    cursor = None
+    try:
+        logger.info("Request to get department detail: %s", department_id)
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        sql = """
+            SELECT d.id, d.name, d.location,
+                   (SELECT COUNT(*) FROM doctors doc WHERE doc.department_id = d.id) AS doctor_count
+            FROM departments d
+            WHERE d.id = %s
+        """
+        cursor.execute(sql, (department_id,))
+        row = cursor.fetchone()
+        if not row:
+            logger.warning("Department %s not found.", department_id)
+            return jsonify({"success": False, "message": "科室不存在"}), 404
+
+        data = {
+            "id": row['id'],
+            "name": row['name'],
+            "location": row['location'],
+            "doctorCount": int(row['doctor_count'])
+        }
+        return jsonify(data)
+
+    except Exception as e:
+        logger.error("Error fetching department %s: %s", department_id, str(e))
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+        logger.info("Database connection closed.")
+
 # 删除科室：必须医生为0才可删除。
 @basic_bp.route('/api/departments/<string:department_id>', methods=['DELETE'])
 def delete_department(department_id):
@@ -102,8 +141,94 @@ def get_medicines():
         if cursor: cursor.close()
         if conn: conn.close()
         logger.info("Database connection closed.")
-        
-# DELETE: 删除药品 - 最简逻辑：若有相关处方细则，则无法删除。
+
+# 查看某个药品详情
+@basic_bp.route('/api/medicines/<string:medicine_id>', methods=['GET'])
+def get_medicine_detail(medicine_id):
+    conn = None
+    cursor = None
+    try:
+        logger.info("Request to get medicine detail: %s", medicine_id)
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        sql = "SELECT id, name, price, stock, specification FROM medicines WHERE id = %s"
+        cursor.execute(sql, (medicine_id,))
+        row = cursor.fetchone()
+        if not row:
+            logger.warning("Medicine %s not found.", medicine_id)
+            return jsonify({"success": False, "message": "药品不存在"}), 404
+
+        # 保证 price 可 JSON 化
+        row['price'] = float(row['price'])
+        data = {
+            "id": row['id'],
+            "name": row['name'],
+            "price": row['price'],
+            "stock": row['stock'],
+            "specification": row['specification']
+        }
+        return jsonify(data)
+
+    except Exception as e:
+        logger.error("Error fetching medicine %s: %s", medicine_id, str(e))
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+        logger.info("Database connection closed.")
+
+# 修改药品信息
+@basic_bp.route('/api/medicines/<string:medicine_id>', methods=['PUT'])
+def update_medicine_detail(medicine_id):
+    data = request.json or {}
+    conn = None
+    cursor = None
+    try:
+        logger.info("Request to update medicine %s: %s", medicine_id, data)
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        fields = []
+        params = []
+        if 'name' in data:
+            fields.append("name = %s"); params.append(data.get('name'))
+        if 'price' in data:
+            fields.append("price = %s"); params.append(data.get('price'))
+        if 'stock' in data:
+            fields.append("stock = %s"); params.append(data.get('stock'))
+        if 'specification' in data:
+            fields.append("specification = %s"); params.append(data.get('specification'))
+
+        if not fields:
+            return jsonify({"success": False, "message": "没有提供可更新字段"}), 400
+
+        sql = "UPDATE medicines SET " + ", ".join(fields) + " WHERE id = %s"
+        params.append(medicine_id)
+
+        cursor.execute(sql, tuple(params))
+        if cursor.rowcount == 0:
+            conn.rollback()
+            logger.warning("Medicine %s not found for update.", medicine_id)
+            return jsonify({"success": False, "message": "药品不存在或已被删除"}), 404
+
+        conn.commit()
+        logger.info("Medicine %s updated successfully.", medicine_id)
+        return jsonify({"success": True, "message": "药品信息更新成功"}), 200
+
+    except Exception as e:
+        if conn: conn.rollback()
+        logger.error("Error updating medicine %s: %s", medicine_id, str(e))
+        return jsonify({"success": False, "message": str(e)}), 500
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+        logger.info("Database connection closed for medicine update.")
+
+
+# 删除药品 - 最简逻辑：若有相关处方细则，则无法删除。
 @basic_bp.route('/api/medicines/<string:medicine_id>', methods=['DELETE'])
 def delete_medicine(medicine_id):
     conn = None
