@@ -199,7 +199,7 @@ def delete_patient(patient_id):
         cursor = conn.cursor()
 
         # 开启事务，确保所有操作要么都成功，要么都失败
-        conn.begin()
+        conn.start_transaction()
 
         # 1. 删除该患者的挂号记录
         cursor.execute("DELETE FROM appointments WHERE patient_id = %s", (patient_id,))
