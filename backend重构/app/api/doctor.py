@@ -205,7 +205,7 @@ def delete_doctor(doctor_id):
             return jsonify({"success": False, "message": "医生不存在或已删除。"}), 404
 
         conn.commit()
-        logger.info("Doctor with ID %s deleted successfully (simple logic).", doctor_id)
+        logger.info("Doctor with ID %s deleted successfully.", doctor_id)
         return jsonify({"success": True, "message": "医生删除成功。"}), 200
 
     except Exception as e:

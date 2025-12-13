@@ -257,7 +257,7 @@ def delete_medicine(medicine_id):
             return jsonify({"success": False, "message": "药品不存在或已删除。"}), 404
 
         conn.commit()
-        logger.info("Medicine with ID %s deleted successfully (simple logic).", medicine_id)
+        logger.info("Medicine with ID %s deleted successfully.", medicine_id)
         return jsonify({"success": True, "message": "药品删除成功。"}), 200
 
     except Exception as e:
