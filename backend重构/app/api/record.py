@@ -1,8 +1,9 @@
 # --- START OF FILE app/api/record.py ---
 from flask import Blueprint, request, jsonify
 from app.utils.db import get_db_connection
-from app.utils.common import format_date
 import logging
+from app.utils.common import format_date
+from datetime import date
 
 record_bp = Blueprint('record', __name__)
 logger = logging.getLogger(__name__)
@@ -204,3 +205,36 @@ def create_record():
         if cursor: cursor.close()
         if conn: conn.close()
         logger.info("Database connection closed.")
+    
+# DELETE: 删除病历 (级联删除处方明细)
+@record_bp.route('/api/records/<string:record_id>', methods=['DELETE'])
+def delete_medical_record(record_id):
+    conn = None
+    cursor = None
+    try:
+        logger.info("Request to delete medical record with ID: %s", record_id)
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # 执行删除病历操作。因为数据库中 prescription_details 对 medical_records 设置了 ON DELETE CASCADE，相关的处方明细将自动被删除。
+        cursor.execute("DELETE FROM medical_records WHERE id = %s", (record_id,))
+        if cursor.rowcount == 0:
+            conn.rollback()
+            logger.warning("Medical record with ID %s not found for deletion.", record_id)
+            return jsonify({"success": False, "message": "病历不存在或已删除。"}), 404
+
+        conn.commit()
+        logger.info("Medical record with ID %s and associated prescription details deleted successfully.", record_id)
+        return jsonify({"success": True, "message": "病历及其相关处方明细删除成功。"}), 200
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error("Error deleting medical record %s: %s", record_id, str(e))
+        return jsonify({"success": False, "message": str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+        logger.info("Database connection closed for medical record deletion.")

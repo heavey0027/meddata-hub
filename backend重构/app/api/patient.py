@@ -1,8 +1,9 @@
 # --- START OF FILE app/api/patient.py ---
 from flask import Blueprint, request, jsonify
 from app.utils.db import get_db_connection
-from app.utils.common import format_date
 import logging
+from datetime import date
+from app.utils.common import format_date
 
 patient_bp = Blueprint('patient', __name__)
 logger = logging.getLogger(__name__)
@@ -187,6 +188,53 @@ def update_patient(p_id):
         if conn: conn.close()
         logger.info("Database connection closed.")
 
+# DELETE: 删除患者
+@patient_bp.route('/api/patients/<string:patient_id>', methods=['DELETE'])
+def delete_patient(patient_id):
+    conn = None
+    cursor = None
+    try:
+        logger.info("Request to delete patient with ID: %s", patient_id)
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # 开启事务，确保所有操作要么都成功，要么都失败
+        conn.begin()
+
+        # 1. 删除该患者的挂号记录
+        cursor.execute("DELETE FROM appointments WHERE patient_id = %s", (patient_id,))
+        logger.info("Deleted %d appointment records for patient %s.", cursor.rowcount, patient_id)
+
+        # 2. 删除该患者的病历记录 (这将通过级联删除自动删除相关的处方明细)
+        cursor.execute("DELETE FROM medical_records WHERE patient_id = %s", (patient_id,))
+        logger.info("Deleted %d medical records for patient %s (and cascaded %d prescription details).", 
+                     cursor.rowcount, patient_id, cursor.rowcount) # cursor.rowcount 这里只能反映 medical_records 的删除数量
+
+        # 3. 删除患者本身
+        cursor.execute("DELETE FROM patients WHERE id = %s", (patient_id,))
+        if cursor.rowcount == 0:
+            conn.rollback()
+            logger.warning("Patient with ID %s not found for deletion.", patient_id)
+            return jsonify({"success": False, "message": "患者不存在或已删除。"}), 404
+
+        conn.commit()
+        logger.info("Patient with ID %s and all associated data deleted successfully.", patient_id)
+        return jsonify({"success": True, "message": "患者及其所有相关数据删除成功。"}), 200
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error("Error deleting patient %s: %s", patient_id, str(e))
+        return jsonify({"success": False, "message": str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+        logger.info("Database connection closed for patient deletion.")
+
+
+# 查询患者总数
 @patient_bp.route('/api/patients/count', methods=['GET'])
 def get_patient_count():
     conn = None
@@ -222,6 +270,7 @@ def get_patient_count():
             conn.close()
         logger.info("Database connection closed.")
 
+# 患者性别比例统计
 @patient_bp.route('/api/patients/gender_ratio', methods=['GET'])
 def get_gender_ratio():
     conn = None
@@ -273,6 +322,7 @@ def get_gender_ratio():
             conn.close()
         logger.info("Database connection closed.")
 
+# 患者年龄比例统计
 @patient_bp.route('/api/patients/age_ratio', methods=['GET'])
 def get_age_ratio():
     conn = None
