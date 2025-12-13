@@ -391,16 +391,104 @@ export const getRecords = async (patientId?: string): Promise<MedicalRecord[]> =
   return fetchWithFallback(endpoint, fallback);
 };
 
+export const deleteMedicalRecord = async (id: string) => {
+  // Local persistence
+  const current = await getRecords();
+  const updated = current.filter(r => r.id !== id);
+  localStorage.setItem('meddata_records', JSON.stringify(updated));
+
+  const url = `${API_BASE_URL}/records/${id}?_t=${Date.now()}`;
+  addLog('INFO', 'API_REQUEST', 'DELETE 删除病历', `ID: ${id}`, { url });
+
+  try {
+    const response = await fetch(url, { method: 'DELETE' });
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.message || '删除失败');
+    }
+    addLog('SUCCESS', 'API_RESPONSE', '病历删除成功');
+  } catch (e: any) {
+    addLog('ERROR', 'API_FAIL', '删除病历失败', e.message);
+    throw e;
+  }
+};
+
 export const getDoctors = async (): Promise<Doctor[]> => {
-  return fetchWithFallback('/doctors', mockDoctors);
+  const local = localStorage.getItem('meddata_doctors');
+  const fallback = local ? JSON.parse(local) : mockDoctors;
+  return fetchWithFallback('/doctors', fallback);
+};
+
+export const deleteDoctor = async (id: string) => {
+    const current = await getDoctors();
+    const updated = current.filter(d => d.id !== id);
+    localStorage.setItem('meddata_doctors', JSON.stringify(updated));
+
+    const url = `${API_BASE_URL}/doctors/${id}?_t=${Date.now()}`;
+    addLog('INFO', 'API_REQUEST', 'DELETE 删除医生', `ID: ${id}`, { url });
+    try {
+        const response = await fetch(url, { method: 'DELETE' });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.message || '删除失败');
+        }
+        addLog('SUCCESS', 'API_RESPONSE', '医生删除成功');
+    } catch(e: any) {
+        addLog('ERROR', 'API_FAIL', '删除医生失败', e.message);
+        throw e;
+    }
 };
 
 export const getDepartments = async (): Promise<Department[]> => {
-  return fetchWithFallback('/departments', mockDepartments);
+  const local = localStorage.getItem('meddata_departments');
+  const fallback = local ? JSON.parse(local) : mockDepartments;
+  return fetchWithFallback('/departments', fallback);
+};
+
+export const deleteDepartment = async (id: string) => {
+    const current = await getDepartments();
+    const updated = current.filter(d => d.id !== id);
+    localStorage.setItem('meddata_departments', JSON.stringify(updated));
+
+    const url = `${API_BASE_URL}/departments/${id}?_t=${Date.now()}`;
+    addLog('INFO', 'API_REQUEST', 'DELETE 删除科室', `ID: ${id}`, { url });
+    try {
+        const response = await fetch(url, { method: 'DELETE' });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.message || '删除失败');
+        }
+        addLog('SUCCESS', 'API_RESPONSE', '科室删除成功');
+    } catch(e: any) {
+        addLog('ERROR', 'API_FAIL', '删除科室失败', e.message);
+        throw e;
+    }
 };
 
 export const getMedicines = async (): Promise<Medicine[]> => {
-  return fetchWithFallback('/medicines', mockMedicines);
+  const local = localStorage.getItem('meddata_medicines');
+  const fallback = local ? JSON.parse(local) : mockMedicines;
+  return fetchWithFallback('/medicines', fallback);
+};
+
+export const deleteMedicine = async (id: string) => {
+    const current = await getMedicines();
+    const updated = current.filter(m => m.id !== id);
+    localStorage.setItem('meddata_medicines', JSON.stringify(updated));
+
+    const url = `${API_BASE_URL}/medicines/${id}?_t=${Date.now()}`;
+    addLog('INFO', 'API_REQUEST', 'DELETE 删除药品', `ID: ${id}`, { url });
+    try {
+        const response = await fetch(url, { method: 'DELETE' });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.message || '删除失败');
+        }
+        addLog('SUCCESS', 'API_RESPONSE', '药品删除成功');
+    } catch(e: any) {
+        addLog('ERROR', 'API_FAIL', '删除药品失败', e.message);
+        throw e;
+    }
 };
 
 export const getPrescriptionDetails = async (recordId?: string): Promise<PrescriptionDetail[]> => {
@@ -479,7 +567,7 @@ export const saveMedicalRecord = async (record: MedicalRecord, details: Prescrip
     const currentRecords = await getRecords();
     localStorage.setItem('meddata_records', JSON.stringify([...currentRecords, record]));
     // ...略...
-    
+
     addLog('SUCCESS', 'API_RESPONSE', '病历提交成功 (DB)');
   } catch (e: any) { 
     addLog('ERROR', 'API_FAIL', '病历提交异常', e.message);
@@ -543,7 +631,7 @@ export const createAppointment = async (appointment: Appointment) => {
 
   const current = await getAppointments();
   localStorage.setItem('meddata_appointments', JSON.stringify([...current, appointment]));
-  
+
   // Backend expects camelCase payload. 
   // It includes all required fields like patientId, createTime, etc.
   const backendPayload = {
@@ -636,7 +724,7 @@ export const getAppointmentStatistics = async (date?: string): Promise<{ hour: n
 
   // Using fetchWithFallback but passing the generated mock as fallback
   const fallbackData = await mockFallback();
-  
+
   return fetchWithFallback(endpoint, fallbackData);
 };
 
@@ -685,12 +773,12 @@ export const findPatientByQuery = async (query: string | undefined | null): Prom
     p.phone === q || 
     p.name === q
   );
-  
+
   // Construct URL with query param to let backend filter
   // Using generic 'query' param to match the function name intent.
   // This allows the backend to efficiently lookup the patient by ID, phone, or name without returning the full list.
   const endpoint = `/patients?query=${encodeURIComponent(q)}`;
-  
+
   // Fetch specific match from backend using query param
   const patients = await fetchWithFallback<Patient[]>(endpoint, localMatch ? [localMatch] : []);
   
@@ -808,7 +896,7 @@ export const getPatientDemographics = async (): Promise<PatientDemographics> => 
       getDepartments()
   ]);
 
-  // Diagnosis distribution logic (still relies on records)
+    // Diagnosis distribution logic (still relies on records)
   const diagCount = records.reduce((acc, r) => {
       acc[r.diagnosis] = (acc[r.diagnosis] || 0) + 1;
       return acc;

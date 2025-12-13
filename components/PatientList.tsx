@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { getPatients, createPatient, updatePatient, getFullPatientDetails, getDoctors, getMedicines, saveMedicalRecord } from '../services/mockDb';
+import { getPatients, createPatient, updatePatient, deletePatient, getFullPatientDetails, getDoctors, getMedicines, saveMedicalRecord, deleteMedicalRecord } from '../services/mockDb';
 import { Patient, Doctor, Medicine, MedicalRecord, PrescriptionDetail } from '../types';
-import { Search, Plus, Trash2, Edit2, X, FileText, Pill, FilePlus, Crown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Plus, Trash2, Edit2, X, FileText, Pill, FilePlus, Crown, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
 import { addLog } from '../services/logger';
+import { getCurrentUser } from '../services/authService';
 
 // Helper for local YYYY-MM-DD
 const getTodayStr = () => {
@@ -18,6 +19,7 @@ const getTodayStr = () => {
 const LIMIT = 100;
 
 export const PatientList: React.FC = () => {
+  const currentUser = getCurrentUser();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
@@ -46,6 +48,8 @@ export const PatientList: React.FC = () => {
   const [tempPrescription, setTempPrescription] = useState<Partial<PrescriptionDetail>>({
     medicineId: '', dosage: '', usage: '', days: 1
   });
+
+  const isAdmin = currentUser?.role === 'admin';
 
   useEffect(() => {
     loadData();
@@ -83,7 +87,7 @@ export const PatientList: React.FC = () => {
         const targetPatient = patients.find(p => p.id === editingId);
         if (targetPatient) {
           const updatedPatient = { ...targetPatient, ...formData } as Patient;
-          await updatePatient(updatedPatient); // Calls PUT /api/patients/:id
+          await updatePatient(updatedPatient); 
           
           updatedList = updatedList.map(p => p.id === editingId ? updatedPatient : p);
           addLog('SUCCESS', '患者管理', '编辑患者', `更新患者 ${formData.name} (ID: ${editingId})`);
@@ -92,11 +96,11 @@ export const PatientList: React.FC = () => {
         // Create logic (POST)
         const newPatient: Patient = {
           id: `P00${Math.floor(Math.random() * 1000)}`,
-          createTime: getTodayStr(), // Use Local Date
-          password: 'password', // default password for admin-created users
+          createTime: getTodayStr(), 
+          password: 'password', 
           ...formData as Patient
         };
-        await createPatient(newPatient); // Calls POST /api/patients
+        await createPatient(newPatient); 
         
         updatedList.push(newPatient);
         addLog('SUCCESS', '患者管理', '新增患者', `创建患者 ${newPatient.name} (ID: ${newPatient.id})`);
@@ -108,6 +112,30 @@ export const PatientList: React.FC = () => {
       setFormData({ name: '', gender: '男', age: 0, phone: '', address: '' });
     } catch (e: any) {
       alert(`操作失败: ${e.message || '未知错误'}`);
+    }
+  };
+
+  const handleDeletePatient = async (id: string, name: string) => {
+    if (!window.confirm(`确定要删除患者 "${name}" (ID: ${id}) 吗？\n此操作将级联删除该患者的所有挂号、病历及处方记录，且不可恢复！`)) return;
+
+    try {
+        await deletePatient(id);
+        setPatients(prev => prev.filter(p => p.id !== id));
+        alert('删除成功');
+    } catch(e: any) {
+        alert('删除失败: ' + e.message);
+    }
+  };
+
+  const handleDeleteRecord = async (recordId: string) => {
+    if (!window.confirm(`确定要删除病历记录 (ID: ${recordId}) 吗？\n此操作将级联删除相关处方明细。`)) return;
+
+    try {
+        await deleteMedicalRecord(recordId);
+        setPatientRecords(prev => prev.filter(r => r.id !== recordId));
+        alert('删除成功');
+    } catch(e: any) {
+        alert('删除失败: ' + e.message);
     }
   };
 
@@ -167,7 +195,6 @@ export const PatientList: React.FC = () => {
     }
 
     const doc = doctors.find(d => d.id === recordForm.doctorId);
-    // Explicitly generate IDs here
     const newRecordId = `R${Date.now()}`;
 
     const newRecord: MedicalRecord = {
@@ -178,12 +205,12 @@ export const PatientList: React.FC = () => {
       doctorName: doc?.name || 'Unknown',
       diagnosis: recordForm.diagnosis!,
       treatmentPlan: recordForm.treatmentPlan!,
-      visitDate: recordForm.visitDate! // Ensure not empty
+      visitDate: recordForm.visitDate! 
     };
 
     const newDetails: PrescriptionDetail[] = prescriptionBuffer.map((p, idx) => ({
       id: `PD${Date.now()}-${idx}`,
-      recordId: newRecordId, // Ensure link
+      recordId: newRecordId, 
       medicineId: p.medicineId!,
       dosage: p.dosage!,
       usage: p.usage!,
@@ -268,6 +295,11 @@ export const PatientList: React.FC = () => {
                     <button onClick={() => openEdit(patient)} className="text-gray-400 hover:text-blue-600 p-1">
                       <Edit2 className="h-4 w-4" />
                     </button>
+                    {isAdmin && (
+                        <button onClick={() => handleDeletePatient(patient.id, patient.name)} className="text-gray-400 hover:text-red-600 p-1">
+                            <Trash2 className="h-4 w-4" />
+                        </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -349,7 +381,7 @@ export const PatientList: React.FC = () => {
         document.body
       )}
 
-      {/* Add Record Modal - Portal */}
+      {/* Add Record Modal */}
       {isAddRecordModalOpen && selectedPatient && createPortal(
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[9999] backdrop-blur-sm">
           <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
@@ -523,7 +555,17 @@ export const PatientList: React.FC = () => {
                           <span className="bg-indigo-600 text-white text-xs px-2 py-0.5 rounded font-bold">{record.visitDate}</span>
                           <span className="text-sm font-semibold text-gray-800">主治医生: {record.doctorName}</span>
                         </div>
-                        <span className="text-xs text-gray-400">ID: {record.id}</span>
+                        <div className="flex items-center gap-3">
+                            <span className="text-xs text-gray-400">ID: {record.id}</span>
+                            {isAdmin && (
+                                <button 
+                                    onClick={() => handleDeleteRecord(record.id)}
+                                    className="text-red-400 hover:text-red-600 text-xs flex items-center gap-1 border border-red-200 px-2 py-0.5 rounded hover:bg-red-50"
+                                >
+                                    <Trash2 className="h-3 w-3" /> 删除
+                                </button>
+                            )}
+                        </div>
                      </div>
                      <div className="p-4">
                        <div className="mb-4"><div className="text-xs font-bold text-gray-500 uppercase mb-1">诊断结果</div><div className="text-gray-900 font-medium">{record.diagnosis}</div></div>

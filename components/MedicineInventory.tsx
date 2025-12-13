@@ -1,12 +1,16 @@
+
 import React, { useState, useEffect } from 'react';
-import { getMedicines } from '../services/mockDb';
+import { getMedicines, deleteMedicine } from '../services/mockDb';
 import { Medicine } from '../types';
-import { AlertTriangle, Pill, Search } from 'lucide-react';
+import { AlertTriangle, Pill, Search, Trash2 } from 'lucide-react';
+import { getCurrentUser } from '../services/authService';
 
 export const MedicineInventory: React.FC = () => {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const user = getCurrentUser();
+  const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
     loadData();
@@ -17,6 +21,17 @@ export const MedicineInventory: React.FC = () => {
     const data = await getMedicines();
     setMedicines(data);
     setLoading(false);
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+      if(!window.confirm(`确定要删除药品 "${name}" (ID: ${id}) 吗？\n如果在用处方中包含此药品，删除可能会失败。`)) return;
+      try {
+          await deleteMedicine(id);
+          setMedicines(prev => prev.filter(m => m.id !== id));
+          alert("删除成功");
+      } catch (e: any) {
+          alert("删除失败: " + e.message);
+      }
   };
 
   const filteredMedicines = medicines.filter(m => 
@@ -61,6 +76,7 @@ export const MedicineInventory: React.FC = () => {
               <th className="px-6 py-3">规格</th>
               <th className="px-6 py-3">单价</th>
               <th className="px-6 py-3 text-right">库存数量</th>
+              {isAdmin && <th className="px-6 py-3 text-right">操作</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 text-sm">
@@ -88,6 +104,13 @@ export const MedicineInventory: React.FC = () => {
                       {med.stock}
                     </span>
                   </td>
+                  {isAdmin && (
+                    <td className="px-6 py-3 text-right">
+                        <button onClick={() => handleDelete(med.id, med.name)} className="text-gray-400 hover:text-red-600 p-1">
+                            <Trash2 className="h-4 w-4" />
+                        </button>
+                    </td>
+                  )}
                 </tr>
               );
             })}

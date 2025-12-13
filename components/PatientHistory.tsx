@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { findPatientByQuery, getFullPatientDetails, getPatients, updatePatient } from '../services/mockDb';
-import { getCurrentUser } from '../services/authService';
+import { findPatientByQuery, getFullPatientDetails, getPatients, updatePatient, deletePatient } from '../services/mockDb';
+import { getCurrentUser, logout } from '../services/authService';
 import { Patient } from '../types';
-import { Search, Clock, User, Calendar, Pill, AlertCircle, ChevronDown, ChevronUp, Edit2 } from 'lucide-react';
+import { Search, Clock, User, Calendar, Pill, AlertCircle, ChevronDown, ChevronUp, Edit2, UserX } from 'lucide-react';
 import { addLog } from '../services/logger';
 
 export const PatientHistory: React.FC = () => {
@@ -86,6 +86,21 @@ export const PatientHistory: React.FC = () => {
      setPatient(updatedPatient);
      setIsEditModalOpen(false);
      alert("个人信息更新成功！");
+  };
+
+  const handleDeleteAccount = async () => {
+      if (!patient) return;
+      if (!window.confirm(`警告：您确定要注销您的账号吗？\nID: ${patient.id}\n注销后，您的所有病历和挂号记录将被永久删除且无法恢复。`)) return;
+
+      try {
+          await deletePatient(patient.id);
+          alert("账号已注销。感谢您的使用。");
+          logout();
+          window.location.href = '#/login';
+          window.location.reload();
+      } catch (e: any) {
+          alert("注销失败: " + e.message);
+      }
   };
 
   return (
@@ -177,6 +192,16 @@ export const PatientHistory: React.FC = () => {
                      <span className="font-medium text-gray-800">{patient.address}</span>
                    </div>
                 </div>
+                {user?.role === 'patient' && (
+                    <div className="pt-6 border-t border-gray-100 mt-4">
+                        <button 
+                            onClick={handleDeleteAccount}
+                            className="w-full flex items-center justify-center gap-2 text-red-500 bg-red-50 py-2 rounded-lg hover:bg-red-100 transition-colors text-sm font-medium"
+                        >
+                            <UserX className="h-4 w-4" /> 注销账号
+                        </button>
+                    </div>
+                )}
              </div>
           </div>
           {/* Timeline and other details... */}

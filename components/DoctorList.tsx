@@ -1,13 +1,16 @@
 
 import React, { useState, useEffect } from 'react';
-import { getDoctors, getDepartments } from '../services/mockDb';
+import { getDoctors, getDepartments, deleteDoctor } from '../services/mockDb';
 import { Doctor, Department } from '../types';
-import { Stethoscope, Filter, X, User } from 'lucide-react';
+import { Stethoscope, Filter, X, User, Trash2 } from 'lucide-react';
+import { getCurrentUser } from '../services/authService';
 
 export const DoctorList: React.FC = () => {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
+  const user = getCurrentUser();
+  const isAdmin = user?.role === 'admin';
 
   // Filters state corresponding to all attributes
   const [filters, setFilters] = useState({
@@ -42,7 +45,18 @@ export const DoctorList: React.FC = () => {
     setFilters({ name: '', departmentId: '', title: '', specialty: '', phone: '' });
   };
 
-  // Client-side filtering logic (simulating backend query params behavior described in API_DOCUMENTATION.md)
+  const handleDelete = async (id: string, name: string) => {
+      if(!window.confirm(`确定要删除医生 "${name}" (ID: ${id}) 吗？\n如果该医生有相关挂号或病历，删除将被拒绝。`)) return;
+      try {
+          await deleteDoctor(id);
+          setDoctors(prev => prev.filter(d => d.id !== id));
+          alert("删除成功");
+      } catch (e: any) {
+          alert("删除失败: " + e.message);
+      }
+  };
+
+  // Client-side filtering logic
   const filteredDoctors = doctors.filter(doc => {
     return (
       (!filters.name || doc.name.includes(filters.name)) &&
@@ -129,12 +143,13 @@ export const DoctorList: React.FC = () => {
               <th className="px-6 py-3">当前候诊</th>
               <th className="px-6 py-3">专业方向</th>
               <th className="px-6 py-3">联系电话</th>
+              {isAdmin && <th className="px-6 py-3 text-right">操作</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 text-sm">
             {filteredDoctors.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-6 py-8 text-center text-gray-400">
+                <td colSpan={isAdmin ? 8 : 7} className="px-6 py-8 text-center text-gray-400">
                   没有找到符合条件的医生信息
                 </td>
               </tr>
@@ -150,7 +165,6 @@ export const DoctorList: React.FC = () => {
                     </span>
                   </td>
                    <td className="px-6 py-3">
-                    {/* Display pendingCount with conditional styling */}
                     <div className={`flex items-center gap-1 font-semibold ${
                       (doc.pendingCount || 0) > 5 ? 'text-red-600' : 'text-green-600'
                     }`}>
@@ -160,6 +174,13 @@ export const DoctorList: React.FC = () => {
                   </td>
                   <td className="px-6 py-3 text-gray-600">{doc.specialty}</td>
                   <td className="px-6 py-3 text-gray-500 font-mono">{doc.phone}</td>
+                  {isAdmin && (
+                    <td className="px-6 py-3 text-right">
+                        <button onClick={() => handleDelete(doc.id, doc.name)} className="text-gray-400 hover:text-red-600 p-1">
+                            <Trash2 className="h-4 w-4" />
+                        </button>
+                    </td>
+                  )}
                 </tr>
               ))
             )}

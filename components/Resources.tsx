@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { getDepartments } from '../services/mockDb';
+import { getDepartments, deleteDepartment } from '../services/mockDb';
+import { getCurrentUser } from '../services/authService';
 import { Department } from '../types';
-import { Building2, Stethoscope, Pill } from 'lucide-react';
+import { Building2, Stethoscope, Pill, Trash2 } from 'lucide-react';
 import { MedicineInventory } from './MedicineInventory';
 import { DoctorList } from './DoctorList';
 
@@ -10,6 +12,8 @@ export const Resources: React.FC = () => {
   const location = useLocation();
   const [activeTab, setActiveTab] = useState<'doctors' | 'medicines' | 'departments'>('doctors');
   const [departments, setDepartments] = useState<Department[]>([]);
+  const user = getCurrentUser();
+  const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
     const fetchDepts = async () => {
@@ -19,13 +23,23 @@ export const Resources: React.FC = () => {
     fetchDepts();
   }, []);
 
-  // Listen for navigation state to switch tabs automatically
   useEffect(() => {
     const state = location.state as { initialTab?: 'doctors' | 'medicines' | 'departments' } | null;
     if (state?.initialTab) {
       setActiveTab(state.initialTab);
     }
   }, [location]);
+
+  const handleDeleteDept = async (id: string, name: string) => {
+      if(!window.confirm(`确定要删除科室 "${name}" (ID: ${id}) 吗？\n如果该科室有医生，删除将被拒绝。`)) return;
+      try {
+          await deleteDepartment(id);
+          setDepartments(prev => prev.filter(d => d.id !== id));
+          alert("删除成功");
+      } catch (e: any) {
+          alert("删除失败: " + e.message);
+      }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -77,6 +91,7 @@ export const Resources: React.FC = () => {
                     <th className="px-6 py-3">科室ID</th>
                     <th className="px-6 py-3">科室名称</th>
                     <th className="px-6 py-3">位置</th>
+                    {isAdmin && <th className="px-6 py-3 text-right">操作</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-sm">
@@ -85,6 +100,13 @@ export const Resources: React.FC = () => {
                       <td className="px-6 py-3 text-gray-500">{dept.id}</td>
                       <td className="px-6 py-3 font-medium text-blue-600">{dept.name}</td>
                       <td className="px-6 py-3 text-gray-600">{dept.location}</td>
+                      {isAdmin && (
+                        <td className="px-6 py-3 text-right">
+                           <button onClick={() => handleDeleteDept(dept.id, dept.name)} className="text-gray-400 hover:text-red-600 p-1">
+                                <Trash2 className="h-4 w-4" />
+                            </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
