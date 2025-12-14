@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { getMedicines, deleteMedicine } from '../services/mockDb';
+import { createPortal } from 'react-dom';
+import { getMedicines, deleteMedicine, updateMedicine, getMedicineById } from '../services/mockDb';
 import { Medicine } from '../types';
-import { AlertTriangle, Pill, Search, Trash2 } from 'lucide-react';
+import { AlertTriangle, Pill, Search, Trash2, Edit2, Save, X } from 'lucide-react';
 import { getCurrentUser } from '../services/authService';
 
 export const MedicineInventory: React.FC = () => {
@@ -11,6 +12,10 @@ export const MedicineInventory: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const user = getCurrentUser();
   const isAdmin = user?.role === 'admin';
+
+  // Edit State
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingMedicine, setEditingMedicine] = useState<Partial<Medicine>>({});
 
   useEffect(() => {
     loadData();
@@ -31,6 +36,29 @@ export const MedicineInventory: React.FC = () => {
           alert("删除成功");
       } catch (e: any) {
           alert("删除失败: " + e.message);
+      }
+  };
+
+  const handleEditClick = async (med: Medicine) => {
+    try {
+        // Fetch fresh details from API
+        const freshData = await getMedicineById(med.id);
+        setEditingMedicine(freshData || med);
+        setIsEditModalOpen(true);
+    } catch (e) {
+        alert("获取药品详情失败");
+    }
+  };
+
+  const handleUpdate = async () => {
+      if (!editingMedicine.id || !editingMedicine.name) return;
+      try {
+          await updateMedicine(editingMedicine.id, editingMedicine);
+          setIsEditModalOpen(false);
+          loadData(); // Refresh list
+          alert("更新成功");
+      } catch (e: any) {
+          alert("更新失败: " + e.message);
       }
   };
 
@@ -105,8 +133,11 @@ export const MedicineInventory: React.FC = () => {
                     </span>
                   </td>
                   {isAdmin && (
-                    <td className="px-6 py-3 text-right">
-                        <button onClick={() => handleDelete(med.id, med.name)} className="text-gray-400 hover:text-red-600 p-1">
+                    <td className="px-6 py-3 text-right flex justify-end gap-2">
+                        <button onClick={() => handleEditClick(med)} className="text-gray-400 hover:text-blue-600 p-1" title="编辑药品">
+                            <Edit2 className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => handleDelete(med.id, med.name)} className="text-gray-400 hover:text-red-600 p-1" title="删除药品">
                             <Trash2 className="h-4 w-4" />
                         </button>
                     </td>
@@ -123,6 +154,51 @@ export const MedicineInventory: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Edit Modal */}
+      {isEditModalOpen && createPortal(
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[9999] backdrop-blur-sm">
+              <div className="bg-white rounded-xl w-full max-w-lg p-6 shadow-2xl animate-fade-in">
+                  <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-xl font-bold text-gray-800">编辑药品信息</h3>
+                      <button onClick={() => setIsEditModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+                  </div>
+                  <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">药品ID (不可改)</label>
+                              <input className="w-full border p-2 rounded bg-gray-100 text-gray-500" value={editingMedicine.id} disabled />
+                          </div>
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">药品名称</label>
+                              <input className="w-full border p-2 rounded" value={editingMedicine.name} onChange={e => setEditingMedicine({...editingMedicine, name: e.target.value})} />
+                          </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">价格</label>
+                              <input type="number" className="w-full border p-2 rounded" value={editingMedicine.price} onChange={e => setEditingMedicine({...editingMedicine, price: Number(e.target.value)})} />
+                          </div>
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">库存</label>
+                              <input type="number" className="w-full border p-2 rounded" value={editingMedicine.stock} onChange={e => setEditingMedicine({...editingMedicine, stock: Number(e.target.value)})} />
+                          </div>
+                      </div>
+                      <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">规格</label>
+                          <input className="w-full border p-2 rounded" value={editingMedicine.specification} onChange={e => setEditingMedicine({...editingMedicine, specification: e.target.value})} />
+                      </div>
+                  </div>
+                  <div className="mt-6 flex justify-end gap-3">
+                      <button onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 border rounded text-gray-600 hover:bg-gray-50">取消</button>
+                      <button onClick={handleUpdate} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2">
+                          <Save className="h-4 w-4" /> 保存修改
+                      </button>
+                  </div>
+              </div>
+          </div>,
+          document.body
+      )}
     </div>
   );
 };

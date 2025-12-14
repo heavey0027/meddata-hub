@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { getDoctors, getDepartments, deleteDoctor } from '../services/mockDb';
+import { createPortal } from 'react-dom';
+import { getDoctors, getDepartments, deleteDoctor, updateDoctor, getDoctorById } from '../services/mockDb';
 import { Doctor, Department } from '../types';
-import { Stethoscope, Filter, X, User, Trash2 } from 'lucide-react';
+import { Stethoscope, Filter, X, User, Trash2, Edit2, Save } from 'lucide-react';
 import { getCurrentUser } from '../services/authService';
 
 export const DoctorList: React.FC = () => {
@@ -20,6 +21,10 @@ export const DoctorList: React.FC = () => {
     specialty: '',
     phone: ''
   });
+
+  // Edit State
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingDoctor, setEditingDoctor] = useState<Partial<Doctor>>({});
 
   useEffect(() => {
     loadData();
@@ -53,6 +58,30 @@ export const DoctorList: React.FC = () => {
           alert("删除成功");
       } catch (e: any) {
           alert("删除失败: " + e.message);
+      }
+  };
+
+  const handleEditClick = async (doc: Doctor) => {
+      try {
+          // Fetch detailed info via new API endpoint
+          const freshData = await getDoctorById(doc.id);
+          setEditingDoctor(freshData || doc);
+          setIsEditModalOpen(true);
+      } catch (e) {
+          alert("获取医生详情失败");
+      }
+  };
+
+  const handleUpdate = async () => {
+      if (!editingDoctor.id || !editingDoctor.name) return;
+      try {
+          // The API validates department existence on the backend
+          await updateDoctor(editingDoctor.id, editingDoctor);
+          setIsEditModalOpen(false);
+          loadData(); // Refresh list
+          alert("更新成功");
+      } catch (e: any) {
+          alert("更新失败: " + e.message);
       }
   };
 
@@ -175,8 +204,11 @@ export const DoctorList: React.FC = () => {
                   <td className="px-6 py-3 text-gray-600">{doc.specialty}</td>
                   <td className="px-6 py-3 text-gray-500 font-mono">{doc.phone}</td>
                   {isAdmin && (
-                    <td className="px-6 py-3 text-right">
-                        <button onClick={() => handleDelete(doc.id, doc.name)} className="text-gray-400 hover:text-red-600 p-1">
+                    <td className="px-6 py-3 text-right flex justify-end gap-2">
+                        <button onClick={() => handleEditClick(doc)} className="text-gray-400 hover:text-blue-600 p-1" title="编辑资料">
+                            <Edit2 className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => handleDelete(doc.id, doc.name)} className="text-gray-400 hover:text-red-600 p-1" title="删除医生">
                             <Trash2 className="h-4 w-4" />
                         </button>
                     </td>
@@ -192,6 +224,63 @@ export const DoctorList: React.FC = () => {
         <span>显示 {filteredDoctors.length} 条记录</span>
         <span>共 {doctors.length} 位医生</span>
       </div>
+
+      {/* Edit Doctor Modal */}
+      {isEditModalOpen && createPortal(
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[9999] backdrop-blur-sm">
+              <div className="bg-white rounded-xl w-full max-w-lg p-6 shadow-2xl animate-fade-in">
+                  <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-xl font-bold text-gray-800">编辑医生信息</h3>
+                      <button onClick={() => setIsEditModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+                  </div>
+                  <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">医生ID (不可改)</label>
+                              <input className="w-full border p-2 rounded bg-gray-100 text-gray-500" value={editingDoctor.id} disabled />
+                          </div>
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">姓名</label>
+                              <input className="w-full border p-2 rounded" value={editingDoctor.name} onChange={e => setEditingDoctor({...editingDoctor, name: e.target.value})} />
+                          </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">所属科室</label>
+                              <select 
+                                  className="w-full border p-2 rounded bg-white" 
+                                  value={editingDoctor.departmentId} 
+                                  onChange={e => setEditingDoctor({...editingDoctor, departmentId: e.target.value})}
+                              >
+                                  {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                              </select>
+                          </div>
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">职称</label>
+                              <input className="w-full border p-2 rounded" value={editingDoctor.title} onChange={e => setEditingDoctor({...editingDoctor, title: e.target.value})} />
+                          </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">专业方向</label>
+                              <input className="w-full border p-2 rounded" value={editingDoctor.specialty} onChange={e => setEditingDoctor({...editingDoctor, specialty: e.target.value})} />
+                          </div>
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">联系电话</label>
+                              <input className="w-full border p-2 rounded" value={editingDoctor.phone} onChange={e => setEditingDoctor({...editingDoctor, phone: e.target.value})} />
+                          </div>
+                      </div>
+                  </div>
+                  <div className="mt-6 flex justify-end gap-3">
+                      <button onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 border rounded text-gray-600 hover:bg-gray-50">取消</button>
+                      <button onClick={handleUpdate} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2">
+                          <Save className="h-4 w-4" /> 保存修改
+                      </button>
+                  </div>
+              </div>
+          </div>,
+          document.body
+      )}
     </div>
   );
 };

@@ -1,5 +1,5 @@
 
-import { Patient, MedicalRecord, Doctor, Department, Medicine, PrescriptionDetail, DashboardStats, PatientDemographics, Appointment, UserRole } from '../types';
+import { Patient, MedicalRecord, Doctor, Department, Medicine, PrescriptionDetail, DashboardStats, PatientDemographics, Appointment, UserRole, MonthlyStats } from '../types';
 import { addLog } from './logger';
 
 // 配置后端 API 地址。
@@ -198,8 +198,6 @@ export const getPatients = async (limit?: number, offset?: number): Promise<Pati
   const allPatients = local ? JSON.parse(local) : mockPatients;
   
   // Local Mock Pagination
-  // Modified logic: ONLY slice if limit is explicitly provided.
-  // If limit is undefined (e.g. Dashboard/Stats calls), return ALL patients.
   let fallback = allPatients;
   if (limit !== undefined) {
       const start = offset || 0;
@@ -224,14 +222,12 @@ export const getPatientCount = async (): Promise<number> => {
   const local = localStorage.getItem('meddata_patients');
   const count = local ? JSON.parse(local).length : mockPatients.length;
   
-  // Expecting backend to return { total_patients: number }
   const response = await fetchWithFallback<any>('/patients/count', { total_patients: count });
   return typeof response === 'number' ? response : (response.total_patients ?? response.count ?? count);
 };
 
 // Fetch Patient Gender Ratio stats
 const getPatientGenderStats = async (): Promise<{name: string, value: number}[]> => {
-    // Local Fallback
     const local = localStorage.getItem('meddata_patients');
     const allPatients = local ? JSON.parse(local) : mockPatients;
     const fallbackStats = allPatients.reduce((acc: any, p: Patient) => {
@@ -241,11 +237,8 @@ const getPatientGenderStats = async (): Promise<{name: string, value: number}[]>
         return acc;
     }, { male: 0, female: 0, other: 0 });
 
-    // API Call
     const data = await fetchWithFallback<any>('/patients/gender_ratio', fallbackStats);
 
-    // Map Backend Keys (male, female, other) to Frontend Display Keys
-    // Note: Backend might return { male: 0, female: 0, other: X } if database uses '男'/'女' but backend logic expects 'M'/'F'
     return [
         { name: '男', value: data.male || 0 },
         { name: '女', value: data.female || 0 },
@@ -255,7 +248,6 @@ const getPatientGenderStats = async (): Promise<{name: string, value: number}[]>
 
 // Fetch Patient Age Ratio stats
 const getPatientAgeStats = async (): Promise<{name: string, value: number}[]> => {
-    // Local Fallback
     const local = localStorage.getItem('meddata_patients');
     const allPatients = local ? JSON.parse(local) : mockPatients;
     const fallbackStats = { '青少年': 0, '青年': 0, '中年': 0, '老年': 0 };
@@ -267,10 +259,8 @@ const getPatientAgeStats = async (): Promise<{name: string, value: number}[]> =>
         else fallbackStats['老年']++;
     });
 
-    // API Call: Returns { "青少年": x, "青年": y, ... }
     const data = await fetchWithFallback<any>('/patients/age_ratio', fallbackStats);
 
-    // Map Backend Keys to Detailed Frontend Display Keys
     return [
         { name: '0-18岁 (青少年)', value: data['青少年'] || 0 },
         { name: '19-35岁 (青年)', value: data['青年'] || 0 },
@@ -281,11 +271,8 @@ const getPatientAgeStats = async (): Promise<{name: string, value: number}[]> =>
 
 // 1. Create Patient (POST /api/patients)
 export const createPatient = async (patient: Patient) => {
-  // Ensure createTime is set to current browser date
   patient.createTime = getLocalDate();
-
-  // Local persistence for fallback
-  const current = await getPatients(); // Calls with no params -> Gets ALL, which is correct for re-saving
+  const current = await getPatients(); 
   localStorage.setItem('meddata_patients', JSON.stringify([...current, patient]));
   
   const url = `${API_BASE_URL}/patients?_t=${Date.now()}`;
@@ -297,33 +284,23 @@ export const createPatient = async (patient: Patient) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patient)
     });
-
-     const data = await response.json(); // 解析后端返回的数据
-
-    if (!response.ok) {
-      // 关键：抛出后端返回的 message (例如 "ID已存在", "服务器内部错误")
-      throw new Error(data.message || '创建失败');
-    }
-
-    // 只有后端成功了，才更新本地 Mock 数据以保持一致
+     const data = await response.json();
+    if (!response.ok) throw new Error(data.message || '创建失败');
     const current = await getPatients();
     localStorage.setItem('meddata_patients', JSON.stringify([...current, patient]));
-    
     addLog('SUCCESS', 'API_RESPONSE', '患者创建成功 (DB)');
   } catch (e: any) {
     addLog('ERROR', 'API_FAIL', '创建患者失败', e.message);
-    throw e; // 继续向上抛出，让 UI 层捕获
+    throw e;
   }
 };
 
 // 2. Update Patient (PUT /api/patients/<id>)
 export const updatePatient = async (patient: Patient) => {
-  // Local persistence
   const current = await getPatients();
   const updated = current.map(p => p.id === patient.id ? patient : p);
   localStorage.setItem('meddata_patients', JSON.stringify(updated));
 
-  // Backend: PUT with ID in URL
   const url = `${API_BASE_URL}/patients/${patient.id}?_t=${Date.now()}`;
   addLog('INFO', 'API_REQUEST', 'PUT 更新患者', `ID: ${patient.id}`, { url, body: patient });
 
@@ -333,18 +310,11 @@ export const updatePatient = async (patient: Patient) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patient)
     });
-
     const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.message || '更新失败');
-    }
-
-    // 后端成功后，更新本地
+    if (!response.ok) throw new Error(data.message || '更新失败');
     const current = await getPatients();
     const updated = current.map(p => p.id === patient.id ? patient : p);
     localStorage.setItem('meddata_patients', JSON.stringify(updated));
-
     addLog('SUCCESS', 'API_RESPONSE', '患者更新成功 (DB)');
   } catch (e: any) { 
     addLog('ERROR', 'API_FAIL', '更新患者失败', e.message);
@@ -353,12 +323,10 @@ export const updatePatient = async (patient: Patient) => {
 };
 
 export const deletePatient = async (id: string) => {
-  // Local persistence
   const current = await getPatients();
   const updated = current.filter(p => p.id !== id);
   localStorage.setItem('meddata_patients', JSON.stringify(updated));
 
-  // Backend: DELETE with ID in URL
   const url = `${API_BASE_URL}/patients/${id}?_t=${Date.now()}`;
   addLog('INFO', 'API_REQUEST', 'DELETE 删除患者', `ID: ${id}`, { url });
 
@@ -392,7 +360,6 @@ export const getRecords = async (patientId?: string): Promise<MedicalRecord[]> =
 };
 
 export const deleteMedicalRecord = async (id: string) => {
-  // Local persistence
   const current = await getRecords();
   const updated = current.filter(r => r.id !== id);
   localStorage.setItem('meddata_records', JSON.stringify(updated));
@@ -413,10 +380,50 @@ export const deleteMedicalRecord = async (id: string) => {
   }
 };
 
+// --- Doctor CRUD ---
+
 export const getDoctors = async (): Promise<Doctor[]> => {
   const local = localStorage.getItem('meddata_doctors');
   const fallback = local ? JSON.parse(local) : mockDoctors;
   return fetchWithFallback('/doctors', fallback);
+};
+
+export const getDoctorById = async (id: string): Promise<Doctor | undefined> => {
+    const local = localStorage.getItem('meddata_doctors');
+    const fallbackList = local ? JSON.parse(local) : mockDoctors;
+    const fallback = fallbackList.find((d: Doctor) => d.id === id);
+
+    // Call /api/doctors/<doctor_id>
+    return fetchWithFallback(`/doctors/${id}`, fallback);
+};
+
+export const updateDoctor = async (id: string, data: Partial<Doctor>) => {
+    // Local persistence
+    const current = await getDoctors();
+    const updated = current.map(d => d.id === id ? { ...d, ...data } : d);
+    localStorage.setItem('meddata_doctors', JSON.stringify(updated));
+
+    const url = `${API_BASE_URL}/doctors/${id}?_t=${Date.now()}`;
+    addLog('INFO', 'API_REQUEST', 'PUT 更新医生信息', `ID: ${id}`, { url, body: data });
+    
+    try {
+        const response = await fetch(url, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const resData = await response.json();
+        if (!response.ok) throw new Error(resData.message || '更新失败');
+        
+        const current = await getDoctors();
+        const updated = current.map(d => d.id === id ? { ...d, ...data } : d);
+        localStorage.setItem('meddata_doctors', JSON.stringify(updated));
+        
+        addLog('SUCCESS', 'API_RESPONSE', '医生更新成功');
+    } catch(e: any) {
+        addLog('ERROR', 'API_FAIL', '更新医生失败', e.message);
+        throw e;
+    }
 };
 
 export const deleteDoctor = async (id: string) => {
@@ -439,10 +446,21 @@ export const deleteDoctor = async (id: string) => {
     }
 };
 
+// --- Department CRUD ---
+
 export const getDepartments = async (): Promise<Department[]> => {
   const local = localStorage.getItem('meddata_departments');
   const fallback = local ? JSON.parse(local) : mockDepartments;
   return fetchWithFallback('/departments', fallback);
+};
+
+export const getDepartmentById = async (id: string): Promise<Department | undefined> => {
+    const local = localStorage.getItem('meddata_departments');
+    const fallbackList = local ? JSON.parse(local) : mockDepartments;
+    const fallback = fallbackList.find((d: Department) => d.id === id);
+
+    // Call /api/departments/<department_id>
+    return fetchWithFallback(`/departments/${id}`, fallback);
 };
 
 export const deleteDepartment = async (id: string) => {
@@ -465,10 +483,50 @@ export const deleteDepartment = async (id: string) => {
     }
 };
 
+// --- Medicine CRUD ---
+
 export const getMedicines = async (): Promise<Medicine[]> => {
   const local = localStorage.getItem('meddata_medicines');
   const fallback = local ? JSON.parse(local) : mockMedicines;
   return fetchWithFallback('/medicines', fallback);
+};
+
+export const getMedicineById = async (id: string): Promise<Medicine | undefined> => {
+    const local = localStorage.getItem('meddata_medicines');
+    const fallbackList = local ? JSON.parse(local) : mockMedicines;
+    const fallback = fallbackList.find((m: Medicine) => m.id === id);
+
+    // Call /api/medicines/<medicine_id>
+    return fetchWithFallback(`/medicines/${id}`, fallback);
+};
+
+export const updateMedicine = async (id: string, data: Partial<Medicine>) => {
+    // Local persistence
+    const current = await getMedicines();
+    const updated = current.map(m => m.id === id ? { ...m, ...data } : m);
+    localStorage.setItem('meddata_medicines', JSON.stringify(updated));
+
+    const url = `${API_BASE_URL}/medicines/${id}?_t=${Date.now()}`;
+    addLog('INFO', 'API_REQUEST', 'PUT 更新药品信息', `ID: ${id}`, { url, body: data });
+
+    try {
+        const response = await fetch(url, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const resData = await response.json();
+        if (!response.ok) throw new Error(resData.message || '更新失败');
+
+        const current = await getMedicines();
+        const updated = current.map(m => m.id === id ? { ...m, ...data } : m);
+        localStorage.setItem('meddata_medicines', JSON.stringify(updated));
+        
+        addLog('SUCCESS', 'API_RESPONSE', '药品更新成功');
+    } catch(e: any) {
+        addLog('ERROR', 'API_FAIL', '更新药品失败', e.message);
+        throw e;
+    }
 };
 
 export const deleteMedicine = async (id: string) => {
@@ -509,24 +567,20 @@ export const getPrescriptionDetails = async (recordId?: string): Promise<Prescri
 
 // 3. Create Medical Record (POST /api/records)
 export const saveMedicalRecord = async (record: MedicalRecord, details: PrescriptionDetail[]) => {
-  // Ensure visitDate is set to current browser date if missing
   if (!record.visitDate) {
       record.visitDate = getLocalDate();
   }
 
-  // Mock Persistence
   const currentRecords = await getRecords();
   localStorage.setItem('meddata_records', JSON.stringify([...currentRecords, record]));
   const currentDetails = await getPrescriptionDetails();
   localStorage.setItem('meddata_prescriptions', JSON.stringify([...currentDetails, ...details]));
   
-  // Validate
   if (!record.id || !record.patientId || !record.doctorId || !record.diagnosis || !record.treatmentPlan) {
       addLog('WARNING', 'API_REQUEST', '病历字段缺失', '未发送请求', { record });
       return;
   }
 
-  // Convert to camelCase payload (as required by backend record_data.get('patientId'))
   const backendPayload = {
       record: {
           id: record.id,
@@ -534,7 +588,7 @@ export const saveMedicalRecord = async (record: MedicalRecord, details: Prescrip
           doctorId: record.doctorId,
           diagnosis: record.diagnosis,
           treatmentPlan: record.treatmentPlan,
-          visitDate: record.visitDate // Uses local date from browser
+          visitDate: record.visitDate 
       },
       details: details.map(d => ({
           id: d.id,
@@ -547,7 +601,6 @@ export const saveMedicalRecord = async (record: MedicalRecord, details: Prescrip
   };
 
   const url = `${API_BASE_URL}/records?_t=${Date.now()}`;
-  
   addLog('INFO', 'API_REQUEST', 'POST 提交病历', `RecordID: ${record.id}`, { url, body: backendPayload });
 
   try {
@@ -557,21 +610,14 @@ export const saveMedicalRecord = async (record: MedicalRecord, details: Prescrip
         body: JSON.stringify(backendPayload)
     });
      const data = await response.json();
-
-    if(!response.ok) {
-        // 关键：这里会捕获 "药品ID xxx 库存不足", "数据插入失败"
-        throw new Error(data.message || '病历提交失败');
-    }
-
-    // 后端成功后，更新本地
+    if(!response.ok) throw new Error(data.message || '病历提交失败');
+    
     const currentRecords = await getRecords();
     localStorage.setItem('meddata_records', JSON.stringify([...currentRecords, record]));
-    // ...略...
-
     addLog('SUCCESS', 'API_RESPONSE', '病历提交成功 (DB)');
   } catch (e: any) { 
     addLog('ERROR', 'API_FAIL', '病历提交异常', e.message);
-    throw e; // 必须抛出，否则 UI 会以为保存成功并关闭弹窗
+    throw e;
   }
 };
 
@@ -585,38 +631,23 @@ export const getAppointments = async (
   const local = localStorage.getItem('meddata_appointments');
   let fallback = local ? JSON.parse(local) : mockAppointments;
 
-  // Mock Logic:
   if (doctorId) {
     const doctors = await getDoctors();
     const doc = doctors.find(d => d.id === doctorId);
-    if (doc) {
-      fallback = fallback.filter((a: Appointment) => a.departmentId === doc.departmentId);
-    }
+    if (doc) fallback = fallback.filter((a: Appointment) => a.departmentId === doc.departmentId);
   }
 
-  // Filter by Patient ID for "My Appointments"
-  if (patientId) {
-    fallback = fallback.filter((a: Appointment) => a.patientId === patientId);
-  }
+  if (patientId) fallback = fallback.filter((a: Appointment) => a.patientId === patientId);
+  if (specificDate) fallback = fallback.filter((a: Appointment) => a.createTime.startsWith(specificDate));
 
-  if (specificDate) {
-      fallback = fallback.filter((a: Appointment) => a.createTime.startsWith(specificDate));
-  }
-
-  // API Logic: Build query params
   let params = [];
   if (doctorId) params.push(`doctor_id=${doctorId}`);
   if (patientId) params.push(`patient_id=${patientId}`);
   
-  // If Admin is querying for dashboard, pass role and date
   if (queryRole === 'admin') {
       params.push(`role=admin`);
-      // Update: Make date optional for admin to allow full history fetching
-      if (specificDate) {
-          params.push(`date=${specificDate}`);
-      }
+      if (specificDate) params.push(`date=${specificDate}`);
   } else {
-      // For doctor/patient view, pass date if provided
       if (specificDate) params.push(`date=${specificDate}`);
   }
 
@@ -628,17 +659,10 @@ export const getAppointments = async (
 // 5. Create Appointment (POST /api/appointments)
 export const createAppointment = async (appointment: Appointment) => {
   appointment.createTime = getLocalDatetime();
-
   const current = await getAppointments();
   localStorage.setItem('meddata_appointments', JSON.stringify([...current, appointment]));
 
-  // Backend expects camelCase payload. 
-  // It includes all required fields like patientId, createTime, etc.
-  const backendPayload = {
-      ...appointment,
-      status: 'pending',
-  };
-
+  const backendPayload = { ...appointment, status: 'pending' };
   const url = `${API_BASE_URL}/appointments?_t=${Date.now()}`;
   addLog('INFO', 'API_REQUEST', 'POST 挂号', `Patient: ${appointment.patientName}`, { url, body: backendPayload });
 
@@ -649,16 +673,10 @@ export const createAppointment = async (appointment: Appointment) => {
         body: JSON.stringify(backendPayload)
      });
      const data = await response.json();
-
-     if (!response.ok) {
-        // 关键：捕获 "挂号重复", "科室无医生排班"
-        throw new Error(data.message || '挂号失败');
-     }
+     if (!response.ok) throw new Error(data.message || '挂号失败');
      
-     // 后端成功后，更新本地
      const current = await getAppointments();
      localStorage.setItem('meddata_appointments', JSON.stringify([...current, appointment]));
-
      addLog('SUCCESS', 'API_RESPONSE', '挂号成功 (DB)');
   } catch(e: any) {
      addLog('ERROR', 'API_FAIL', '挂号失败', e.message);
@@ -681,13 +699,8 @@ export const updateAppointmentStatus = async (id: string, status: 'completed' | 
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status })
         });
-        
         const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.message || '更新状态失败');
-        }
-
+        if (!response.ok) throw new Error(data.message || '更新状态失败');
         addLog('SUCCESS', 'API_RESPONSE', '状态更新成功 (DB)');
     } catch (e: any) {
         addLog('ERROR', 'API_FAIL', '更新挂号状态失败', e.message);
@@ -697,50 +710,31 @@ export const updateAppointmentStatus = async (id: string, status: 'completed' | 
 
 // 7. Get Appointment Statistics (Hourly Trend)
 export const getAppointmentStatistics = async (date?: string): Promise<{ hour: number; count: number }[]> => {
-  // 1. Mock Mode Fallback Logic (Client-side aggregation)
   const mockFallback = async () => {
-    // Determine scope based on date string length
-    // If no date, use a large multiplier to simulate all-time
     const scopeMultiplier = !date ? 50 : (date.length === 4 ? 20 : (date.length === 7 ? 5 : 1));
-    
-    // Simulate API response structure [ { hour: 0, count: 5 }, ... ]
-    // Generate a bell curve peaking at 9am and 2pm
     const trend = Array.from({ length: 24 }, (_, i) => {
         let base = 0;
-        if (i >= 8 && i <= 11) base = Math.floor(Math.random() * 10) + 5; // Morning peak
-        if (i >= 13 && i <= 16) base = Math.floor(Math.random() * 8) + 4; // Afternoon peak
-        if (i < 8 || i > 18) base = Math.floor(Math.random() * 2); // Off hours
+        if (i >= 8 && i <= 11) base = Math.floor(Math.random() * 10) + 5; 
+        if (i >= 13 && i <= 16) base = Math.floor(Math.random() * 8) + 4; 
+        if (i < 8 || i > 18) base = Math.floor(Math.random() * 2); 
         return { hour: i, count: base * scopeMultiplier };
     });
     return trend;
   };
 
-  // 2. API Call
   let queryString = `role=admin`;
-  if (date) {
-      queryString += `&date=${date}`;
-  }
+  if (date) queryString += `&date=${date}`;
   const endpoint = `/appointments/statistics?${queryString}`;
-
-  // Using fetchWithFallback but passing the generated mock as fallback
   const fallbackData = await mockFallback();
-
   return fetchWithFallback(endpoint, fallbackData);
 };
 
 // 8. Get Sankey Data for Flow Analysis
 export const getSankeyData = async () => {
-  // Construct a fallback that mimics expected backend structure: { nodes: [], links: [] }
   const mockNodes = [
-    { name: "挂号总数" },
-    { name: "科室: 心内科" },
-    { name: "科室: 呼吸科" },
-    { name: "确诊/检查" },
-    { name: "开药/治疗" },
-    { name: "离院/康复" }
+    { name: "挂号总数" }, { name: "科室: 心内科" }, { name: "科室: 呼吸科" },
+    { name: "确诊/检查" }, { name: "开药/治疗" }, { name: "离院/康复" }
   ];
-
-  // Links with source/target as NAMES (string)
   const mockLinks = [
     { source: "挂号总数", target: "科室: 心内科", value: 50 },
     { source: "挂号总数", target: "科室: 呼吸科", value: 30 },
@@ -750,10 +744,20 @@ export const getSankeyData = async () => {
     { source: "确诊/检查", target: "离院/康复", value: 10 },
     { source: "开药/治疗", target: "离院/康复", value: 60 }
   ];
+  return fetchWithFallback('/stats/sankey', { nodes: mockNodes, links: mockLinks });
+};
 
-  const mockData = { nodes: mockNodes, links: mockLinks };
+// 9. Get Monthly Statistics (New Endpoint)
+export const getMonthlyStatistics = async (): Promise<MonthlyStats> => {
+  // Mock Fallback: Use client side calculation logic or stubs
+  const mockFallback: MonthlyStats = {
+      currentMonthPatients: (await getPatientCount()),
+      patientGrowthRate: 5.2, // Simulated positive growth
+      currentMonthVisits: (await getRecords()).length,
+      visitGrowthRate: 12.5
+  };
 
-  return fetchWithFallback('/stats/sankey', mockData);
+  return fetchWithFallback('/statistics/monthly', mockFallback);
 };
 
 // --- Logic Helpers ---
@@ -763,38 +767,24 @@ export const findPatientByQuery = async (query: string | undefined | null): Prom
   const q = String(query).trim();
   if (!q) return undefined;
   
-  // Prepare fallback from local data
   const local = localStorage.getItem('meddata_patients');
   const allPatients = local ? JSON.parse(local) : mockPatients;
   
-  // Local find logic (Fallback)
   const localMatch = allPatients.find((p: Patient) => 
     p.id.toLowerCase() === q.toLowerCase() || 
     p.phone === q || 
     p.name === q
   );
 
-  // Construct URL with query param to let backend filter
-  // Using generic 'query' param to match the function name intent.
-  // This allows the backend to efficiently lookup the patient by ID, phone, or name without returning the full list.
   const endpoint = `/patients?query=${encodeURIComponent(q)}`;
-
-  // Fetch specific match from backend using query param
   const patients = await fetchWithFallback<Patient[]>(endpoint, localMatch ? [localMatch] : []);
-  
-  // Return the best match from the returned list
   return patients.find(p => p.id.toLowerCase() === q.toLowerCase() || p.phone === q) || patients[0];
 };
 
-// STRICT: Only get existing patients. NEVER create.
 export const getExistingPatient = async (appointment: Appointment): Promise<Patient> => {
-    if (!appointment) {
-      throw new Error("挂号单数据无效");
-    }
+    if (!appointment) throw new Error("挂号单数据无效");
 
-    // 1. Try to find by ID if available (Best practice)
     if (appointment.patientId) {
-        // Use optimized findPatientByQuery to hit backend with query param
         const existing = await findPatientByQuery(appointment.patientId);
         if (existing) {
              addLog('INFO', 'PATIENT_LOOKUP', '患者已存在 (ID Match)', existing.id);
@@ -802,7 +792,6 @@ export const getExistingPatient = async (appointment: Appointment): Promise<Pati
         }
     }
 
-    // 2. Try to find by Phone
     if (appointment.patientPhone) {
         const existingByPhone = await findPatientByQuery(appointment.patientPhone);
         if (existingByPhone) {
@@ -811,19 +800,16 @@ export const getExistingPatient = async (appointment: Appointment): Promise<Pati
         }
     }
 
-    // 3. Not Found -> Throw Error
     addLog('ERROR', 'PATIENT_LOOKUP', '未找到患者档案', `挂号信息: ${appointment.patientName} ${appointment.patientPhone}`);
     throw new Error(`未找到患者档案！请确认该患者是否已注册。 (姓名: ${appointment.patientName}, 电话: ${appointment.patientPhone})`);
 };
 
 export const getFullPatientDetails = async (patientId: string) => {
-  // 1. Fetch Records filtered by Patient ID
   const records = await getRecords(patientId);
   const medicines = await getMedicines();
 
   records.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
 
-  // 2. Fetch details for each record (N+1 requests, as requested to use record_id)
   const enrichedRecords = await Promise.all(records.map(async (record) => {
       const details = await getPrescriptionDetails(record.id);
       const recordDetails = details.map(d => {
@@ -867,10 +853,6 @@ export const getStats = async (): Promise<DashboardStats> => {
   const deptDist = Object.entries(deptCounts).map(([name, value]) => ({ name, value }));
   const lowStock = medicines.filter(m => m.stock < 100);
   const recent = [...records].sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime()).slice(0, 5);
-  
-  // Note: We are now using getPatientCount() which only returns the number.
-  // Since we are optimizing not to fetch all patients, 'vipPatients' logic 
-  // (filtering filtering all patients by isVip) is disabled here as it's not used in the Dashboard UI.
   const vipPatients: Patient[] = [];
 
   return {
@@ -889,21 +871,19 @@ export const getStats = async (): Promise<DashboardStats> => {
 export const getPatientDemographics = async (): Promise<PatientDemographics> => {
   const [totalPatients, genderDist, ageDist, records, doctors, departments] = await Promise.all([
       getPatientCount(),
-      getPatientGenderStats(), // Use specialized endpoint
-      getPatientAgeStats(),    // Use specialized endpoint
+      getPatientGenderStats(), 
+      getPatientAgeStats(),
       getRecords(), 
       getDoctors(), 
       getDepartments()
   ]);
 
-    // Diagnosis distribution logic (still relies on records)
   const diagCount = records.reduce((acc, r) => {
       acc[r.diagnosis] = (acc[r.diagnosis] || 0) + 1;
       return acc;
   }, {} as Record<string, number>);
   const diagDist = Object.entries(diagCount).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value).slice(0, 10);
 
-  // Department visits logic (still relies on records)
   const deptCount: Record<string, number> = {};
   records.forEach(r => {
        const doc = doctors.find(d => d.id === r.doctorId);

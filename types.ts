@@ -3,6 +3,7 @@ export interface Department {
   id: string; // 科室ID
   name: string; // 科室名称
   location: string; // 位置
+  doctorCount?: number; // Added: 医生数量 (From new API)
 }
 
 export interface Doctor {
@@ -100,6 +101,13 @@ export interface PatientDemographics {
   ageDistribution: { name: string; value: number }[];
   diagnosisDistribution: { name: string; value: number }[];
   deptVisits: { name: string; value: number }[];
+}
+
+export interface MonthlyStats {
+  currentMonthPatients: number;
+  patientGrowthRate: number; // 较上月增长率 (%)
+  currentMonthVisits: number;
+  visitGrowthRate: number; // 较上月增长率 (%)
 }
 
 export interface SystemLog {
