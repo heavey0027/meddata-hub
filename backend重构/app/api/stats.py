@@ -132,3 +132,126 @@ def get_patient_flow_sankey():
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
+# 新增接口：按月份统计患者档案数与就诊人次，并计算环比增长率
+@stats_bp.route('/api/statistics/monthly', methods=['GET'])
+def get_monthly_statistics():
+    """
+    请求参数:
+      - month: 必需，格式支持 "YYYY-MM"、"YYYYMM"、"YYYY-MM-DD"（只取年月部分）
+    返回 JSON:
+      {
+        "month": "YYYY-MM",
+        "patientCount": int,
+        "prevPatientCount": int,
+        "patientCountGrowthRate": float|null,  # 百分比，保留两位小数；若上个月为0则为 null
+        "visitCount": int,
+        "prevVisitCount": int,
+        "visitCountGrowthRate": float|null
+      }
+    """
+    month_str = request.args.get('month')
+    if not month_str:
+        return jsonify({"success": False, "message": "参数 month 必需，格式例如: 2025-12"}), 400
+
+    # 解析 month 参数，支持多种格式
+    try:
+        month_str = month_str.strip()
+        if re.match(r'^\d{4}-\d{2}$', month_str):
+            dt = datetime.strptime(month_str, "%Y-%m")
+        elif re.match(r'^\d{6}$', month_str):
+            dt = datetime.strptime(month_str, "%Y%m")
+        elif re.match(r'^\d{4}-\d{2}-\d{2}$', month_str):
+            dt = datetime.strptime(month_str, "%Y-%m-%d")
+        else:
+            return jsonify({"success": False, "message": "month 格式不支持，请使用 YYYY-MM 或 YYYYMM"}), 400
+        year = dt.year
+        month = dt.month
+    except Exception as e:
+        logger.warning("Invalid month parameter: %s, error: %s", month_str, str(e))
+        return jsonify({"success": False, "message": "month 参数解析失败"}), 400
+
+    # 计算上个月的年月
+    if month == 1:
+        prev_year = year - 1
+        prev_month = 12
+    else:
+        prev_year = year
+        prev_month = month - 1
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # 本月患者档案数（以 patients.create_time 计）
+        cursor.execute(
+            "SELECT COUNT(*) AS cnt FROM patients WHERE YEAR(create_time) = %s AND MONTH(create_time) = %s",
+            (year, month)
+        )
+        row = cursor.fetchone()
+        patient_count = int(row['cnt'] if row and row['cnt'] is not None else 0)
+
+        # 上个月患者档案数
+        cursor.execute(
+            "SELECT COUNT(*) AS cnt FROM patients WHERE YEAR(create_time) = %s AND MONTH(create_time) = %s",
+            (prev_year, prev_month)
+        )
+        row = cursor.fetchone()
+        prev_patient_count = int(row['cnt'] if row and row['cnt'] is not None else 0)
+
+        # 本月就诊人次（以 medical_records.visit_date 计）
+        cursor.execute(
+            "SELECT COUNT(*) AS cnt FROM medical_records WHERE YEAR(visit_date) = %s AND MONTH(visit_date) = %s",
+            (year, month)
+        )
+        row = cursor.fetchone()
+        visit_count = int(row['cnt'] if row and row['cnt'] is not None else 0)
+
+        # 上个月就诊人次
+        cursor.execute(
+            "SELECT COUNT(*) AS cnt FROM medical_records WHERE YEAR(visit_date) = %s AND MONTH(visit_date) = %s",
+            (prev_year, prev_month)
+        )
+        row = cursor.fetchone()
+        prev_visit_count = int(row['cnt'] if row and row['cnt'] is not None else 0)
+
+        # 计算增长率（环比）
+        def calc_growth(current, previous):
+            if previous == 0:
+                return None
+            try:
+                rate = (current - previous) / previous * 100.0
+                return round(rate, 2)
+            except Exception:
+                return None
+
+        patient_growth = calc_growth(patient_count, prev_patient_count)
+        visit_growth = calc_growth(visit_count, prev_visit_count)
+
+        res = {
+            "month": f"{year:04d}-{month:02d}",
+            "patientCount": patient_count,
+            "prevPatientCount": prev_patient_count,
+            "patientCountGrowthRate": patient_growth,
+            "visitCount": visit_count,
+            "prevVisitCount": prev_visit_count,
+            "visitCountGrowthRate": visit_growth
+        }
+
+        logger.info("Monthly statistics for %s fetched: patients=%d (prev=%d), visits=%d (prev=%d)",
+                    res['month'], patient_count, prev_patient_count, visit_count, prev_visit_count)
+
+        return jsonify(res)
+
+    except Exception as e:
+        logger.error("Error fetching monthly statistics for %s: %s", month_str, str(e))
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+        logger.info("Database connection closed for monthly statistics.")
