@@ -291,7 +291,7 @@ def get_multimodal_file(data_id):
             logger.warning("Multimodal record %s not found.", data_id)
             return jsonify({"success": False, "message": "记录不存在"}), 404
 
-        file_path = "uploaded_files/" + row["file_path"]
+        file_path = row["file_path"]
         if not file_path:
             logger.warning("Multimodal record %s has no file_path.", data_id)
             return jsonify({"success": False, "message": "该记录没有关联文件"}), 404
