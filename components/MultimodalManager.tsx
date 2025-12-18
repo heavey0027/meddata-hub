@@ -5,7 +5,7 @@ import { getMultimodalData, createMultimodalData, deleteMultimodalData } from '.
 import { MultimodalData, ModalityType } from '../types';
 import { 
   FileImage, FileAudio, FileVideo, FileText, File, Activity, 
-  Trash2, Upload, Plus, X, Search, DatabaseZap, Clock, FileType, Eye, Filter
+  Trash2, Upload, Plus, X, Search, DatabaseZap, Clock, FileType, Eye, Filter, PlayCircle
 } from 'lucide-react';
 import { getCurrentUser } from '../services/authService';
 
@@ -148,9 +148,26 @@ export const MultimodalManager: React.FC = () => {
               return <img src={src} alt={item.description} className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-sm mx-auto" />;
           case 'audio':
               return (
-                  <div className="flex flex-col items-center justify-center p-10 bg-gray-50 rounded-lg">
-                      <FileAudio className="h-16 w-16 text-purple-500 mb-4" />
-                      <audio controls src={src} className="w-full max-w-md" />
+                  <div className="w-full max-w-2xl mx-auto p-12 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl border border-indigo-100 shadow-inner flex flex-col items-center">
+                      <div className="relative mb-8">
+                          <div className="absolute inset-0 bg-purple-500/20 blur-2xl rounded-full"></div>
+                          <div className="relative bg-white p-6 rounded-full shadow-lg border border-purple-100">
+                             <FileAudio className="h-20 w-20 text-purple-600" />
+                          </div>
+                          <div className="absolute -bottom-2 -right-2 bg-indigo-600 p-2 rounded-full text-white shadow-md animate-pulse">
+                             <PlayCircle className="h-6 w-6" />
+                          </div>
+                      </div>
+                      
+                      <div className="text-center mb-10">
+                         <h4 className="text-xl font-bold text-gray-800 mb-2">音频记录播放</h4>
+                         <p className="text-sm text-gray-500">ID: {item.id} | 格式: {item.fileFormat || 'Unknown'}</p>
+                      </div>
+
+                      {/* Full width audio player to optimize progress bar length */}
+                      <div className="w-full bg-white/60 backdrop-blur-sm p-4 rounded-xl border border-white/80 shadow-sm">
+                          <audio controls src={src} className="w-full" />
+                      </div>
                   </div>
               );
           case 'video':
