@@ -1,11 +1,12 @@
+
 import React, { useEffect, useState } from 'react';
 import { 
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
-  AreaChart, Area, Sankey, Tooltip, Layer, Rectangle
+  AreaChart, Area, Sankey, Tooltip, Layer, Rectangle, LineChart, Line
 } from 'recharts';
-import { getPatientDemographics, getAppointmentStatistics, getLocalDate, getSankeyData } from '../services/mockDb';
-import { PatientDemographics } from '../types';
-import { Users, FileText, Activity, ArrowUpRight, Clock, Filter, GitMerge } from 'lucide-react';
+import { getPatientDemographics, getAppointmentStatistics, getLocalDate, getSankeyData, getMonthlyStatistics } from '../services/mockDb';
+import { PatientDemographics, MonthlyStats } from '../types';
+import { Users, FileText, Activity, ArrowUpRight, ArrowDownRight, Clock, Filter, GitMerge, TrendingUp, CalendarDays } from 'lucide-react';
 
 const SANKEY_PALETTE = [
   '#6366F1', '#EC4899', '#10B981', '#F59E0B', '#3B82F6', '#8B5CF6', 
@@ -152,6 +153,18 @@ export const PatientStats: React.FC = () => {
   const [hourlyTrend, setHourlyTrend] = useState<{hour: string, value: number}[]>([]);
   const [loadingTrend, setLoadingTrend] = useState(false);
 
+  // -- 月度状态 --
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [monthlyStats, setMonthlyStats] = useState<MonthlyStats | null>(null);
+  const [loadingMonthly, setLoadingMonthly] = useState(false);
+
+  // -- 新增：6个月趋势数据 --
+  const [sixMonthTrend, setSixMonthTrend] = useState<any[]>([]);
+  const [loadingTrend6, setLoadingTrend6] = useState(false);
+
   useEffect(() => {
     const loadStats = async () => {
       try {
@@ -173,36 +186,59 @@ export const PatientStats: React.FC = () => {
 
     loadStats();
     loadSankey();
+    loadSixMonthTrend(); // 初始加载6个月趋势
   }, []);
+
+  // -- 加载当前选中月份的详细 KPI --
+  useEffect(() => {
+    const loadMonthly = async () => {
+      setLoadingMonthly(true);
+      try {
+        const res = await getMonthlyStatistics(selectedMonth);
+        setMonthlyStats(res);
+      } catch (e) { console.error(e); } finally { setLoadingMonthly(false); }
+    };
+    loadMonthly();
+  }, [selectedMonth]);
+
+  // -- 新增：获取过去6个月的趋势数据 --
+  const loadSixMonthTrend = async () => {
+    setLoadingTrend6(true);
+    const months = [];
+    const now = new Date();
+    // 计算过去6个月的 YYYY-MM 字符串
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+
+    try {
+      // 并发请求过去6个月的数据
+      const results = await Promise.all(months.map(m => getMonthlyStatistics(m)));
+      const trend = results.map(r => ({
+        name: r.month,
+        patients: r.patientCount,
+        visits: r.visitCount
+      }));
+      setSixMonthTrend(trend);
+    } catch (e) {
+      console.error("Failed to load 6-month trend", e);
+    } finally {
+      setLoadingTrend6(false);
+    }
+  };
 
   const transformSankeyData = (data: any) => {
       if (!data || !data.nodes || !data.links) return { nodes: [], links: [] };
-
       const { nodes, links } = data;
       const nodeMap = new Map();
-      
       const coloredNodes = nodes.map((node: any, index: number) => {
           nodeMap.set(node.name, index);
-          return {
-              ...node,
-              fill: SANKEY_PALETTE[index % SANKEY_PALETTE.length]
-          };
+          return { ...node, fill: SANKEY_PALETTE[index % SANKEY_PALETTE.length] };
       });
-
       const transformedLinks = links.map((link: any) => ({
-          source: nodeMap.get(link.source),
-          target: nodeMap.get(link.target),
-          value: link.value
-      })).filter((l: any) => 
-          l.source !== undefined && 
-          l.target !== undefined && 
-          l.source !== l.target 
-      );
-      
-      if (coloredNodes.length === 0 || transformedLinks.length === 0) {
-          return { nodes: [], links: [] };
-      }
-
+          source: nodeMap.get(link.source), target: nodeMap.get(link.target), value: link.value
+      })).filter((l: any) => l.source !== undefined && l.target !== undefined && l.source !== l.target);
       return { nodes: coloredNodes, links: transformedLinks };
   };
 
@@ -232,29 +268,18 @@ export const PatientStats: React.FC = () => {
             
             const full24Hours = new Array(24).fill(0).map((_, i) => {
                 const found = rawStats.find(s => s.hour === i);
-                return {
-                    hour: `${String(i).padStart(2, '0')}:00`,
-                    value: found ? found.count : 0
-                };
+                return { hour: `${String(i).padStart(2, '0')}:00`, value: found ? found.count : 0 };
             });
-            
             setHourlyTrend(full24Hours);
-        } catch (e) {
-            console.error("Error loading trend:", e);
-        } finally {
-            setLoadingTrend(false);
-        }
+        } catch (e) { console.error("Error loading trend:", e); } finally { setLoadingTrend(false); }
     };
-
     fetchHourlyData();
   }, [dateValue, timeScope]);
 
   const renderYearOptions = () => {
       const currentYear = new Date().getFullYear();
       const years = [];
-      for (let i = 0; i < 5; i++) {
-          years.push(currentYear - i);
-      }
+      for (let i = 0; i < 5; i++) { years.push(currentYear - i); }
       return years.map(y => <option key={y} value={y}>{y}年</option>);
   };
 
@@ -276,32 +301,71 @@ export const PatientStats: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between transition-transform hover:scale-[1.01]">
-           <div>
-             <p className="text-sm text-gray-500 font-medium mb-1">患者总档案数</p>
-             <h3 className="text-3xl font-bold text-gray-900">{stats.totalPatients}</h3>
-             <div className="mt-2 text-xs text-green-600 flex items-center gap-1">
-               <ArrowUpRight className="h-3 w-3" /> 较上月增长 5.2%
-             </div>
-           </div>
-           <div className="p-4 bg-blue-50 rounded-full text-blue-600">
-             <Users className="h-8 w-8" />
-           </div>
+      {/* 1. 运营增长查询头部 */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-3">
+              <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-sm">
+                  <TrendingUp className="h-6 w-6" />
+              </div>
+              <div>
+                  <h2 className="text-xl font-bold text-gray-800">半年度运营趋势分析</h2>
+                  <p className="text-sm text-gray-500">自动同步过去 6 个月的核心业务指标</p>
+              </div>
+          </div>
+          <div className="flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-xl border border-gray-200">
+              <CalendarDays className="h-4 w-4 text-indigo-500" />
+              <span className="text-sm font-medium text-gray-600">KPI 选定月份:</span>
+              <input 
+                type="month" 
+                className="bg-transparent border-none outline-none text-sm font-bold text-indigo-600 cursor-pointer"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+              />
+          </div>
+      </div>
+
+      {/* 2. 增长 KPI 与 6个月趋势折线图 */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1 space-y-4">
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden transition-all hover:border-indigo-200">
+               {loadingMonthly && <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-10 flex items-center justify-center animate-pulse text-indigo-600 font-bold">同步中...</div>}
+               <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1">本月患者建档 ({monthlyStats?.month || '---'})</p>
+               <h3 className="text-3xl font-black text-gray-900">{monthlyStats?.patientCount || 0}</h3>
+               <div className={`mt-2 text-xs flex items-center gap-1 font-bold ${ (monthlyStats?.patientCountGrowthRate || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600' }`}>
+                  {(monthlyStats?.patientCountGrowthRate || 0) >= 0 ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />} 
+                  环比 {Math.abs(monthlyStats?.patientCountGrowthRate || 0).toFixed(1)}%
+               </div>
+            </div>
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden transition-all hover:border-emerald-200">
+               {loadingMonthly && <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-10 flex items-center justify-center animate-pulse text-emerald-500 font-bold">同步中...</div>}
+               <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1">本月就诊流量 ({monthlyStats?.month || '---'})</p>
+               <h3 className="text-3xl font-black text-gray-900">{monthlyStats?.visitCount || 0}</h3>
+               <div className={`mt-2 text-xs flex items-center gap-1 font-bold ${ (monthlyStats?.visitCountGrowthRate || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600' }`}>
+                  {(monthlyStats?.visitCountGrowthRate || 0) >= 0 ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
+                  环比 {Math.abs(monthlyStats?.visitCountGrowthRate || 0).toFixed(1)}%
+               </div>
+            </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between transition-transform hover:scale-[1.01]">
-           <div>
-             <p className="text-sm text-gray-500 font-medium mb-1">累计就诊人次</p>
-             <h3 className="text-3xl font-bold text-gray-900">{stats.totalVisits}</h3>
-              <div className="mt-2 text-xs text-green-600 flex items-center gap-1">
-               <ArrowUpRight className="h-3 w-3" /> 较上月增长 12.5%
-             </div>
-           </div>
-           <div className="p-4 bg-green-50 rounded-full text-green-600">
-             <FileText className="h-8 w-8" />
-           </div>
+        <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden">
+            {loadingTrend6 && <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-10 flex items-center justify-center animate-pulse text-indigo-600 font-bold">趋势加载中...</div>}
+            <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
+                <Activity className="h-5 w-5 text-indigo-500" />
+                业务增长趋势 (最近 6 个月)
+            </h3>
+            <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={sixMonthTrend} margin={{top: 10, right: 30, left: 0, bottom: 0}}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f5" />
+                        <XAxis dataKey="name" tick={{fontSize: 12, fontWeight: 'bold'}} />
+                        <YAxis tick={{fontSize: 12}} />
+                        <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
+                        <Legend iconType="circle" />
+                        <Line type="monotone" dataKey="patients" name="建档总数" stroke="#6366F1" strokeWidth={4} dot={{ r: 4, fill: '#6366F1', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 8 }} />
+                        <Line type="monotone" dataKey="visits" name="就诊人次" stroke="#10B981" strokeWidth={4} dot={{ r: 4, fill: '#10B981', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 8 }} />
+                    </LineChart>
+                </ResponsiveContainer>
+            </div>
         </div>
       </div>
 

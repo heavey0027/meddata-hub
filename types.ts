@@ -120,10 +120,13 @@ export interface PatientDemographics {
 }
 
 export interface MonthlyStats {
-  currentMonthPatients: number;
-  patientGrowthRate: number; // 较上月增长率 (%)
-  currentMonthVisits: number;
-  visitGrowthRate: number; // 较上月增长率 (%)
+  month: string;
+  patientCount: number;
+  prevPatientCount: number;
+  patientCountGrowthRate: number; // 较上月增长率 (%)
+  visitCount: number;
+  prevVisitCount: number;
+  visitCountGrowthRate: number; // 较上月增长率 (%)
 }
 
 export interface SystemLog {

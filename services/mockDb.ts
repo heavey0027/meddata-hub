@@ -68,7 +68,7 @@ const mockRecords: MedicalRecord[] = [
   },
   { 
     id: 'R002', patientId: 'P002', patientName: '陈晨', doctorId: 'DOC02', doctorName: '李娜',
-    diagnosis: '急性支气管炎', treatmentPlan: '抗感染，止咳化痰', 
+    diagnosis: '急性支气支炎', treatmentPlan: '抗感染，止咳化痰', 
     visitDate: '2023-10-05' 
   },
   { 
@@ -841,17 +841,26 @@ export const getSankeyData = async () => {
   return fetchWithFallback('/stats/sankey', { nodes: mockNodes, links: mockLinks });
 };
 
-// 9. Get Monthly Statistics (New Endpoint)
-export const getMonthlyStatistics = async (): Promise<MonthlyStats> => {
+/**
+ * 9. Get Monthly Statistics
+ * Requirement: The 'month' parameter is MANDATORY.
+ * Endpoint: GET /api/statistics/monthly?month=YYYY-MM
+ */
+export const getMonthlyStatistics = async (month: string): Promise<MonthlyStats> => {
+  if (!month) throw new Error("Month parameter is required (Format: YYYY-MM)");
+  
   // Mock Fallback: Use client side calculation logic or stubs
   const mockFallback: MonthlyStats = {
-      currentMonthPatients: (await getPatientCount()),
-      patientGrowthRate: 5.2, // Simulated positive growth
-      currentMonthVisits: (await getRecords()).length,
-      visitGrowthRate: 12.5
+      month: month,
+      patientCount: (await getPatientCount()),
+      prevPatientCount: (await getPatientCount()) - 2,
+      patientCountGrowthRate: 5.2, 
+      visitCount: (await getRecords()).length,
+      prevVisitCount: (await getRecords()).length - 5,
+      visitCountGrowthRate: 12.5
   };
 
-  return fetchWithFallback('/statistics/monthly', mockFallback);
+  return fetchWithFallback(`/statistics/monthly?month=${month}`, mockFallback);
 };
 
 // --- Logic Helpers ---
