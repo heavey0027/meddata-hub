@@ -5,7 +5,7 @@ import { getMultimodalData, createMultimodalData, deleteMultimodalData } from '.
 import { MultimodalData, ModalityType } from '../types';
 import { 
   FileImage, FileAudio, FileVideo, FileText, File, Activity, 
-  Trash2, Upload, Plus, X, Search, DatabaseZap, Clock, FileType, Eye
+  Trash2, Upload, Plus, X, Search, DatabaseZap, Clock, FileType, Eye, Filter
 } from 'lucide-react';
 import { getCurrentUser } from '../services/authService';
 
@@ -13,6 +13,7 @@ export const MultimodalManager: React.FC = () => {
   const [dataList, setDataList] = useState<MultimodalData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterModality, setFilterModality] = useState<ModalityType | 'all'>('all');
   
   // Modal & Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -128,19 +129,19 @@ export const MultimodalManager: React.FC = () => {
     }
   };
 
-  // Helper to ensure file path is a valid URL
-  const getFileUrl = (path?: string) => {
-      if (!path) return '';
-      // If it's already a full URL (http or blob), return as is
-      if (path.startsWith('http') || path.startsWith('blob:')) {
-          return path;
+  const getFileUrl = (item: MultimodalData) => {
+      const { filePath, id } = item;
+      if (!filePath) return '';
+      
+      if (filePath.startsWith('blob:') || filePath.startsWith('http')) {
+          return filePath;
       }
-      // Otherwise assume it's a relative path from the backend
-      return `http://localhost:5000/${path.startsWith('/') ? path.slice(1) : path}`;
+      
+      return `http://localhost:5000/api/multimodal/file/${id}`;
   };
 
   const renderPreviewContent = (item: MultimodalData) => {
-      const src = getFileUrl(item.filePath);
+      const src = getFileUrl(item);
       
       switch (item.modality) {
           case 'image':
@@ -187,15 +188,17 @@ export const MultimodalManager: React.FC = () => {
       }
   };
 
-  const filteredData = dataList.filter(d => 
-    d.id.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    d.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    d.patientId?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredData = dataList.filter(d => {
+    const matchesSearch = d.id.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          d.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          d.patientId?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesModality = filterModality === 'all' || d.modality === filterModality;
+    return matchesSearch && matchesModality;
+  });
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div className="flex items-center gap-2">
             <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600">
                <DatabaseZap className="h-6 w-6" />
@@ -206,22 +209,38 @@ export const MultimodalManager: React.FC = () => {
             </div>
         </div>
 
-        <div className="flex gap-3 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+           <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-3 py-1.5 shadow-sm">
+             <Filter className="h-4 w-4 text-gray-400" />
+             <select 
+               className="text-sm text-gray-700 outline-none bg-transparent cursor-pointer"
+               value={filterModality}
+               onChange={(e) => setFilterModality(e.target.value as any)}
+             >
+                <option value="all">所有类型</option>
+                <option value="image">影像 (Image)</option>
+                <option value="audio">音频 (Audio)</option>
+                <option value="video">视频 (Video)</option>
+                <option value="text">文本 (Text)</option>
+                <option value="pdf">文档 (PDF)</option>
+                <option value="timeseries">时序 (Timeseries)</option>
+             </select>
+           </div>
            <div className="relative flex-1 sm:w-64">
              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
              <input 
                type="text" 
                placeholder="搜索 ID / 描述 / 患者..."
-               className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+               className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm shadow-sm"
                value={searchTerm}
                onChange={(e) => setSearchTerm(e.target.value)}
              />
            </div>
            <button 
              onClick={() => setIsModalOpen(true)}
-             className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm whitespace-nowrap"
+             className="flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm whitespace-nowrap"
            >
-             <Upload className="h-4 w-4" /> <span className="hidden sm:inline">上传数据</span>
+             <Upload className="h-4 w-4" /> <span>上传数据</span>
            </button>
         </div>
       </div>
@@ -244,7 +263,7 @@ export const MultimodalManager: React.FC = () => {
               {loading ? (
                  <tr><td colSpan={7} className="text-center py-10 text-gray-400">加载数据中...</td></tr>
               ) : filteredData.length === 0 ? (
-                 <tr><td colSpan={7} className="text-center py-10 text-gray-400">暂无多模态数据</td></tr>
+                 <tr><td colSpan={7} className="text-center py-10 text-gray-400">未找到符合条件的数据</td></tr>
               ) : (
                 filteredData.map(item => (
                   <tr key={item.id} className="hover:bg-gray-50 group">
@@ -320,7 +339,7 @@ export const MultimodalManager: React.FC = () => {
                   <div className="p-4 border-t bg-gray-50 flex justify-between items-center text-xs text-gray-500">
                       <span>Format: {viewingItem.fileFormat || 'Unknown'}</span>
                       <a 
-                        href={getFileUrl(viewingItem.filePath)} 
+                        href={getFileUrl(viewingItem)} 
                         download={`file_${viewingItem.id}.${viewingItem.fileFormat}`}
                         target="_blank"
                         rel="noreferrer"
