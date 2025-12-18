@@ -1,4 +1,0 @@
-flask==3.0.3
-mysql-connector-python==9.0.0
-flask-cors==5.0.0
-Faker===35.2.2
