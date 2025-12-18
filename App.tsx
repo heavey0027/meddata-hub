@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FileImage, MessageSquareText, Menu, X, Database, Layers, PieChart as PieChartIcon, ScrollText, CalendarPlus, History, UserCheck, LogOut, Clock, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { LayoutDashboard, Users, FileImage, MessageSquareText, Menu, X, Database, Layers, PieChart as PieChartIcon, ScrollText, CalendarPlus, History, UserCheck, LogOut, Clock, ChevronLeft, ChevronRight, Calendar, DatabaseZap } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { PatientList } from './components/PatientList';
 import { RadiologyAI } from './components/RadiologyAI';
@@ -13,6 +13,7 @@ import { AppointmentHall } from './components/AppointmentHall';
 import { PatientHistory } from './components/PatientHistory';
 import { DoctorConsultation } from './components/DoctorConsultation';
 import { MyAppointments } from './components/MyAppointments';
+import { MultimodalManager } from './components/MultimodalManager';
 import { Login } from './components/Login';
 import { checkBackendHealth } from './services/mockDb';
 import { addLog } from './services/logger';
@@ -33,7 +34,7 @@ const SidebarLink = ({ to, icon, label }: { to: string, icon: React.ReactNode, l
 );
 
 // Route Guard
-const RequireAuth = ({ children, roles }: React.PropsWithChildren<{ roles?: UserRole[] }>): React.ReactElement | null => {
+const RequireAuth = ({ children, roles }: { children: React.ReactNode, roles?: UserRole[] }) => {
   const user = getCurrentUser();
   const location = useLocation();
 
@@ -42,7 +43,6 @@ const RequireAuth = ({ children, roles }: React.PropsWithChildren<{ roles?: User
   }
 
   if (roles && !roles.includes(user.role)) {
-    // Redirect to their home if role mismatch
     return <Navigate to="/" replace />;
   }
 
@@ -65,7 +65,7 @@ const SystemClock = () => {
   );
 };
 
-const Layout = ({ children }: React.PropsWithChildren<{}>) => {
+const Layout = ({ children }: { children: React.ReactNode }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDesktopSidebarOpen, setIsDesktopSidebarOpen] = useState(true);
   const [dbStatus, setDbStatus] = useState<'checking' | 'connected' | 'mock'>('checking');
@@ -129,6 +129,7 @@ const Layout = ({ children }: React.PropsWithChildren<{}>) => {
               <SidebarLink to="/stats" icon={<PieChartIcon className="h-5 w-5" />} label="数据分析" />
               <SidebarLink to="/patients" icon={<Users className="h-5 w-5" />} label="患者管理" />
               <SidebarLink to="/resources" icon={<Layers className="h-5 w-5" />} label="资源管理" />
+              <SidebarLink to="/multimodal" icon={<DatabaseZap className="h-5 w-5" />} label="多模态数据" />
             </>
           )}
 
@@ -152,6 +153,7 @@ const Layout = ({ children }: React.PropsWithChildren<{}>) => {
               <div className="text-xs font-semibold text-gray-400 px-4 mb-2 mt-6 uppercase whitespace-nowrap">医生工作台</div>
               <SidebarLink to="/consultation" icon={<UserCheck className="h-5 w-5" />} label="医生坐诊" />
               <SidebarLink to="/resources" icon={<Layers className="h-5 w-5" />} label="药品查询" />
+              <SidebarLink to="/multimodal" icon={<DatabaseZap className="h-5 w-5" />} label="多模态中心" />
               <SidebarLink to="/radiology" icon={<FileImage className="h-5 w-5" />} label="影像诊断 AI" />
               <SidebarLink to="/ask-ai" icon={<MessageSquareText className="h-5 w-5" />} label="临床助手" />
             </>
@@ -236,6 +238,7 @@ const App: React.FC = () => {
 
           {/* Shared Routes (Resources accessible by Admin & Doctor) */}
           <Route path="/resources" element={<RequireAuth roles={['admin', 'doctor']}><Resources /></RequireAuth>} />
+          <Route path="/multimodal" element={<RequireAuth roles={['admin', 'doctor']}><MultimodalManager /></RequireAuth>} />
           
           {/* Patient Routes */}
           <Route path="/appointment" element={<RequireAuth roles={['patient', 'admin']}><AppointmentHall /></RequireAuth>} />

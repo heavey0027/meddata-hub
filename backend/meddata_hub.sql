@@ -31,7 +31,7 @@ CREATE TABLE `meddata_hub`.`doctors` (
 CREATE TABLE `meddata_hub`.`patients` (
   `id` VARCHAR(50) NOT NULL,
   `name` VARCHAR(100) NOT NULL,
-  `password` VARCHAR(255) NOT NULL,
+  `password` VARCHAR(255) NOT NULL DEFAULT '123456',
   `gender` VARCHAR(10) NOT NULL,
   `age` INT NOT NULL,
   `phone` VARCHAR(20) NULL,
@@ -39,9 +39,6 @@ CREATE TABLE `meddata_hub`.`patients` (
   `create_time` DATE NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE);
-
-ALTER TABLE `meddata_hub`.`patients`
-CHANGE COLUMN `password` `password` VARCHAR(255) NOT NULL DEFAULT '123456' ;
 
 CREATE TABLE `meddata_hub`.`medical_records` (
   `id` VARCHAR(50) NOT NULL,
@@ -72,6 +69,23 @@ CREATE TABLE `meddata_hub`.`prescription_details` (
   `create_time` VARCHAR(50) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE);
+
+  CREATE TABLE `meddata_hub`.`multimodal_data` (
+    `id` VARCHAR(50) PRIMARY KEY,          -- 多模态记录的 ID，如 'img_1'
+    `patient_id` VARCHAR(50) NULL,         -- 预留，之后可以填 patients.id
+    `record_id` VARCHAR(50) NULL,         -- 预留，之后可以填 medical_records.id
+    `source_table` VARCHAR(100) NOT NULL,  -- 来源类型：Document / MedicalImage / AudioRecord 等
+    `source_pk` VARCHAR(50) NOT NULL,     -- 来源里的“主键”或标识，例如 AdmissionRecord1
+    `modality` ENUM('text','image','audio','video','pdf','timeseries','other') NOT NULL, -- 文件类型
+    `text_content` LONGTEXT NULL,          -- 纯文本内容（如果是 text 模态）
+    `file_path` VARCHAR(255) NULL,         -- 文件相对路径，如 medicaldata/Document/AdmissionRecord1.pdf
+    `file_format` VARCHAR(20) NULL,        -- 文件格式：pdf / jpg / mp3 / mp4 / csv 等
+    `description` TEXT NULL,               -- 描述信息
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_patient` (`patient_id`),    -- 索引：病人的 ID
+    INDEX `idx_modality` (`modality`)     -- 索引：文件类型
+    );
+
 
 -- 医生表关联科室
 ALTER TABLE `meddata_hub`.`doctors` 
@@ -111,5 +125,18 @@ ADD CONSTRAINT `fk_detail_medicine`
   FOREIGN KEY (`medicine_id`)
   REFERENCES `meddata_hub`.`medicines` (`id`);
 
+-- 外键关联 patients 表
+ALTER TABLE `meddata_hub`.`multimodal_data`
+ADD CONSTRAINT `fk_multimodal_patient`
+    FOREIGN KEY (`patient_id`)
+    REFERENCES `meddata_hub`.`patients` (`id`)
+    ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- 外键关联 medical_records 表
+ALTER TABLE `meddata_hub`.`multimodal_data`
+ADD CONSTRAINT `fk_multimodal_record`
+    FOREIGN KEY (`record_id`)
+    REFERENCES `meddata_hub`.`medical_records` (`id`)
+    ON DELETE SET NULL ON UPDATE CASCADE;
 
 

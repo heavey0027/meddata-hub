@@ -82,6 +82,22 @@ export interface MedicalImage {
   date: string;
 }
 
+export type ModalityType = 'image' | 'audio' | 'video' | 'pdf' | 'text' | 'timeseries';
+
+export interface MultimodalData {
+  id: string;
+  modality: ModalityType;
+  patientId?: string;
+  recordId?: string;
+  sourceTable?: string;
+  sourcePk?: string;
+  textContent?: string;
+  filePath?: string; // Backend returns this
+  fileFormat?: string;
+  description?: string;
+  createdAt: string;
+}
+
 export interface DashboardStats {
   totalPatients: number;
   totalVisits: number;

@@ -1,5 +1,5 @@
 
-import { Patient, MedicalRecord, Doctor, Department, Medicine, PrescriptionDetail, DashboardStats, PatientDemographics, Appointment, UserRole, MonthlyStats } from '../types';
+import { Patient, MedicalRecord, Doctor, Department, Medicine, PrescriptionDetail, DashboardStats, PatientDemographics, Appointment, UserRole, MonthlyStats, MultimodalData } from '../types';
 import { addLog } from './logger';
 
 // 配置后端 API 地址。
@@ -97,6 +97,12 @@ const mockPrescriptionDetails: PrescriptionDetail[] = [
 ];
 
 const mockAppointments: Appointment[] = [];
+
+const mockMultimodal: MultimodalData[] = [
+    { id: 'MM001', modality: 'image', patientId: 'P001', fileFormat: 'jpg', createdAt: '2023-10-01 10:00:00', description: '胸部X光片 (Mock)', filePath: 'https://images.unsplash.com/photo-1530497610245-94d3c16cda28?auto=format&fit=crop&q=80&w=600' },
+    { id: 'MM002', modality: 'text', patientId: 'P001', textContent: '患者自述胸痛，伴有轻微咳嗽。', createdAt: '2023-10-01 10:05:00', description: '初诊记录文本 (Mock)' },
+    { id: 'MM003', modality: 'timeseries', patientId: 'P003', fileFormat: 'csv', createdAt: '2023-10-02 14:00:00', description: '24小时动态心电图数据' }
+];
 
 // --- API Helpers (Direct Fetch, No Cache) ---
 
@@ -548,6 +554,94 @@ export const deleteMedicine = async (id: string) => {
         throw e;
     }
 };
+
+// --- Multimodal Data CRUD ---
+
+export const getMultimodalData = async (): Promise<MultimodalData[]> => {
+    const local = localStorage.getItem('meddata_multimodal');
+    const fallback = local ? JSON.parse(local) : mockMultimodal;
+    return fetchWithFallback('/multimodal', fallback);
+};
+
+export const createMultimodalData = async (formData: FormData) => {
+    // 1. Mock Local Handling
+    const newEntry: Partial<MultimodalData> = {
+        id: formData.get('id') as string,
+        modality: formData.get('modality') as any,
+        patientId: (formData.get('patientId') as string) || undefined,
+        recordId: (formData.get('recordId') as string) || undefined,
+        description: (formData.get('description') as string) || '',
+        createdAt: getLocalDatetime(),
+        // Mock specific fields
+        fileFormat: 'mock',
+        filePath: 'local_blob_url' 
+    };
+
+    // If there is an actual file object, create a Blob URL for immediate preview in Mock mode
+    const file = formData.get('file') as File;
+    if (file && file instanceof File) {
+        newEntry.filePath = URL.createObjectURL(file);
+        newEntry.fileFormat = file.name.split('.').pop();
+    }
+
+    if (formData.get('textContent')) {
+        newEntry.textContent = formData.get('textContent') as string;
+    }
+
+    const current = await getMultimodalData();
+    // Use full object with fallbacks for required fields to satisfy type
+    const safeEntry = {
+        ...newEntry,
+        id: newEntry.id || `MM-${Date.now()}`,
+        modality: newEntry.modality || 'text',
+        createdAt: newEntry.createdAt || getLocalDatetime()
+    } as MultimodalData;
+
+    localStorage.setItem('meddata_multimodal', JSON.stringify([safeEntry, ...current]));
+
+    // 2. Real API Call
+    const url = `${API_BASE_URL}/multimodal?_t=${Date.now()}`;
+    addLog('INFO', 'API_REQUEST', 'POST 多模态数据上传', `ID: ${newEntry.id}`, { modality: newEntry.modality });
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            body: formData // Browser sets Content-Type to multipart/form-data automatically
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || '上传失败');
+        
+        // Refresh local cache with real data from backend response if needed, 
+        // but for now we rely on the list refresh in UI.
+        addLog('SUCCESS', 'API_RESPONSE', '多模态数据上传成功');
+    } catch (e: any) {
+        addLog('ERROR', 'API_FAIL', '多模态数据上传失败', e.message);
+        throw e;
+    }
+};
+
+export const deleteMultimodalData = async (id: string) => {
+    const current = await getMultimodalData();
+    const updated = current.filter(m => m.id !== id);
+    localStorage.setItem('meddata_multimodal', JSON.stringify(updated));
+
+    const url = `${API_BASE_URL}/multimodal/${id}?_t=${Date.now()}`;
+    addLog('INFO', 'API_REQUEST', 'DELETE 删除多模态数据', `ID: ${id}`, { url });
+
+    try {
+        const response = await fetch(url, { method: 'DELETE' });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.message || '删除失败');
+        }
+        addLog('SUCCESS', 'API_RESPONSE', '多模态数据删除成功');
+    } catch (e: any) {
+        addLog('ERROR', 'API_FAIL', '删除失败', e.message);
+        throw e;
+    }
+};
+
+// ... (Existing Functions)
 
 export const getPrescriptionDetails = async (recordId?: string): Promise<PrescriptionDetail[]> => {
   const local = localStorage.getItem('meddata_prescriptions');
