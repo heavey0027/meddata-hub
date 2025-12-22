@@ -1,3 +1,4 @@
+# --- START OF FILE app/api/basic.py ---
 from flask import Blueprint, request, jsonify
 from app.utils.db import get_db_connection
 import logging
@@ -269,3 +270,5 @@ def delete_medicine(medicine_id):
         if conn:
             conn.close()
         logger.info("Database connection closed for medicine deletion.")
+
+# --- END OF FILE app/api/basic.py ---
