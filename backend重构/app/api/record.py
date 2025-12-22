@@ -8,7 +8,7 @@ from datetime import date
 record_bp = Blueprint('record', __name__)
 logger = logging.getLogger(__name__)
 
-# 1.5 所有（或某个患者）病历(基础 JOIN 查询)
+# 获取所有（或某个患者）病历
 @record_bp.route('/api/records', methods=['GET'])
 def get_records():
     conn = None
@@ -21,7 +21,7 @@ def get_records():
         cursor = conn.cursor(dictionary=True)
 
         # 获取查询参数
-        patient_id = request.args.get('patient_id')  # 获取 patient_id 参数
+        patient_id = request.args.get('patient_id')  
 
         # 基本查询 SQL，关联患者和医生
         sql = """
@@ -34,7 +34,7 @@ def get_records():
             LEFT JOIN doctors d ON r.doctor_id = d.id
         """
 
-        # 如果提供了 patient_id 参数，限制查询该患者的记录
+        # 若有 patient_id 参数，限制查询该患者的记录
         if patient_id:
             sql += " WHERE r.patient_id = %s"
             cursor.execute(sql, (patient_id,))
@@ -69,7 +69,7 @@ def get_records():
         if conn: conn.close()
         logger.info("Database connection closed.")
 
-# 1.6 所有（或某个病历）处方细则(基础查询)
+# 获取所有（或某个病历）处方细则
 @record_bp.route('/api/prescription_details', methods=['GET'])
 def get_prescription_details():
     conn = None
@@ -82,7 +82,7 @@ def get_prescription_details():
         cursor = conn.cursor(dictionary=True)
 
         # 获取查询参数
-        record_id = request.args.get('record_id')  # 获取 record_id 参数
+        record_id = request.args.get('record_id') 
 
         # 基本查询 SQL
         sql = """
@@ -90,7 +90,7 @@ def get_prescription_details():
             FROM prescription_details
         """
 
-        # 如果提供了 record_id 参数，限制查询该处方的细则
+        # 若有 record_id 参数，限制查询该处方的细则
         if record_id:
             sql += " WHERE record_id = %s"
             cursor.execute(sql, (record_id,))
@@ -117,7 +117,6 @@ def get_prescription_details():
         return jsonify(data)
 
     except Exception as e:
-        # 记录异常日志
         logger.error("Error occurred while fetching prescription details: %s", str(e))
         return jsonify({"error": str(e)}), 500
 
@@ -128,7 +127,7 @@ def get_prescription_details():
             conn.close()
         logger.info("Database connection closed.")
 
-# 2.3 提交病历 (CREATE RECORD - 核心事务)
+# 提交病历
 @record_bp.route('/api/records', methods=['POST'])
 def create_record():
     data = request.json
@@ -140,11 +139,11 @@ def create_record():
     cursor = None
     try:
         conn = get_db_connection()
-        # 开启事务 (尽管 mysql-connector 如果 autocommit=False 默认就是开启的，显式调用更清晰)
+        # 开启事务 
         conn.start_transaction()
         cursor = conn.cursor()
 
-        # 1. 插入主表 (medical_records)
+        # 插入主表
         sql_record = """
             INSERT INTO medical_records 
             (id, patient_id, doctor_id, diagnosis, treatment_plan, visit_date)
@@ -160,17 +159,16 @@ def create_record():
         ))
         logger.info("Medical record ID %s created successfully.", record_data.get('id'))
 
-        # 2. 循环插入子表 (prescription_details)
+        # 循环插入子表
         sql_detail = """
             INSERT INTO prescription_details 
             (id, record_id, medicine_id, dosage, usage_info, days)
             VALUES (%s, %s, %s, %s, %s, %s)
         """
-        # 注意: 这里假设前端回传的 recordId 就是 record_data['id']
-        # 且 usage 字段对应数据库的 usage_info
+
         for detail in details_list:
-            # 【高级查询 4】：嵌套查询校验库存
-            # 逻辑：如果(请求的药在数据库中不存在 OR 库存<=0)，则报错
+            # 【高级查询】：嵌套查询校验库存
+            # 如果请求的药在数据库中不存在或库存为0，则报错
             cursor.execute("SELECT stock FROM medicines WHERE id = %s", (detail['medicineId'],))
             res = cursor.fetchone()
             if not res:
@@ -190,7 +188,7 @@ def create_record():
             ))
             logger.info("Prescription detail for Medicine ID %s inserted successfully.", detail['medicineId'])
 
-        # 3. 提交事务
+        # 提交事务
         conn.commit()
         logger.info("Medical record and prescription details committed successfully.")
         return jsonify({"success": True, "message": "病历提交成功"})
@@ -206,7 +204,7 @@ def create_record():
         if conn: conn.close()
         logger.info("Database connection closed.")
     
-# DELETE: 删除病历 (级联删除处方明细)
+# 删除病历：级联删除处方明细
 @record_bp.route('/api/records/<string:record_id>', methods=['DELETE'])
 def delete_medical_record(record_id):
     conn = None
@@ -216,7 +214,7 @@ def delete_medical_record(record_id):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # 执行删除病历操作。因为数据库中 prescription_details 对 medical_records 设置了 ON DELETE CASCADE，相关的处方明细将自动被删除。
+        # 执行删除病历操作。相关的处方明细将自动被删除。
         cursor.execute("DELETE FROM medical_records WHERE id = %s", (record_id,))
         if cursor.rowcount == 0:
             conn.rollback()
@@ -238,3 +236,5 @@ def delete_medical_record(record_id):
         if conn:
             conn.close()
         logger.info("Database connection closed for medical record deletion.")
+
+# --- END OF FILE app/api/record.py ---
