@@ -5,7 +5,7 @@
 
 | 文件名           | 接口路径            | 操作方式 | 描述         |
 | :--------------- | :------------------ | :------- | :----------- |
-| `basic.py` | `/api/departments` | `GET`  | 获取所有科室信息                   |
+| `auth.py` | `/api/login` | `POST`  | 用户认证登录               |
 
 
 ## 2. 基础数据 
@@ -47,8 +47,8 @@
 | :--------------- | :---------------------------------- | :------- | :------------------------- |
 | `appointment.py` | `/api/appointments`                 | `GET`    | 获取预约数据               |
 | `appointment.py` | `/api/appointments/statistics`      | `GET`    | 根据年、月、日统计预约数据 |
-| `appointment.py` | `/api/appointments`                 | POST     | 提交挂号                   |
-| `appointment.py` | `/api/appointments/<string:apt_id>` | PUT      | 更新挂号状态               |
+| `appointment.py` | `/api/appointments`                 | `POST`     | 提交挂号                   |
+| `appointment.py` | `/api/appointments/<string:apt_id>` | `PUT`      | 更新挂号状态               |
 
 ## 6. 核心业务：电子病历
 
