@@ -1,4 +1,3 @@
-# --- START OF FILE app/api/basic.py ---
 from flask import Blueprint, request, jsonify
 from app.utils.db import get_db_connection
 import logging
@@ -6,7 +5,7 @@ import logging
 basic_bp = Blueprint('basic', __name__)
 logger = logging.getLogger(__name__)
 
-# 1.1 所有科室(基础下拉框)
+# 获取所有科室
 @basic_bp.route('/api/departments', methods=['GET'])
 def get_departments():
     conn = None
@@ -34,7 +33,7 @@ def get_departments():
         if conn: conn.close()
         logger.info("Database connection closed.")
 
-# 查看科室详情（包含医生数量）
+# 查看科室详情
 @basic_bp.route('/api/departments/<string:department_id>', methods=['GET'])
 def get_department_detail(department_id):
     conn = None
@@ -73,7 +72,7 @@ def get_department_detail(department_id):
         if conn: conn.close()
         logger.info("Database connection closed.")
 
-# 删除科室：必须医生为0才可删除。
+# 删除科室：必须医生为0才可删除
 @basic_bp.route('/api/departments/<string:department_id>', methods=['DELETE'])
 def delete_department(department_id):
     conn = None
@@ -115,7 +114,7 @@ def delete_department(department_id):
         logger.info("Database connection closed for department deletion.")
 
 
-# 1.3 所有药品(基础查询)
+# 获取所有药品
 @basic_bp.route('/api/medicines', methods=['GET'])
 def get_medicines():
     conn = None
@@ -159,7 +158,6 @@ def get_medicine_detail(medicine_id):
             logger.warning("Medicine %s not found.", medicine_id)
             return jsonify({"success": False, "message": "药品不存在"}), 404
 
-        # 保证 price 可 JSON 化
         row['price'] = float(row['price'])
         data = {
             "id": row['id'],
@@ -228,7 +226,7 @@ def update_medicine_detail(medicine_id):
         logger.info("Database connection closed for medicine update.")
 
 
-# 删除药品 - 最简逻辑：若有相关处方细则，则无法删除。
+# 删除药品：若有相关处方细则，则无法删除
 @basic_bp.route('/api/medicines/<string:medicine_id>', methods=['DELETE'])
 def delete_medicine(medicine_id):
     conn = None
@@ -238,7 +236,7 @@ def delete_medicine(medicine_id):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # 1. 检查该药品是否有任何相关的处方细则
+        # 检查该药品是否有任何相关的处方细则
         cursor.execute("SELECT COUNT(*) FROM prescription_details WHERE medicine_id = %s", (medicine_id,))
         prescription_detail_count = cursor.fetchone()[0]
 
@@ -249,7 +247,7 @@ def delete_medicine(medicine_id):
             )
             return jsonify({"success": False, "message": "无法删除：该药品仍有关联的处方细则。请先处理相关处方。"}), 400
 
-        # 2. 如果没有关联的处方细则，则执行删除药品操作
+        # 如果没有关联的处方细则，则执行删除药品操作
         cursor.execute("DELETE FROM medicines WHERE id = %s", (medicine_id,))
         if cursor.rowcount == 0:
             conn.rollback()
