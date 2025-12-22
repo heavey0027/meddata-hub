@@ -8,14 +8,12 @@ from app.utils.db import get_db_connection
 multimodal_bp = Blueprint('multimodal', __name__)
 logger = logging.getLogger(__name__)
 
-# 上传文件根目录（相对项目根目录）
-# 实际路径类似：E:\backend重构\uploaded_files
+# 上传文件根目录
 UPLOAD_ROOT = os.path.join(os.getcwd(), "uploaded_files")
 os.makedirs(UPLOAD_ROOT, exist_ok=True)
 
 
-# 1. 获取多模态数据列表
-#    GET /api/multimodal?modality=image&patientId=P001
+# 获取多模态数据列表
 @multimodal_bp.route('/api/multimodal', methods=['GET'])
 def get_multimodal_list():
     conn = None
@@ -61,7 +59,7 @@ def get_multimodal_list():
                 "sourcePk": row["source_pk"],
                 "modality": row["modality"],
                 "textContent": row["text_content"],
-                "filePath": row["file_path"],      # 相对路径：uploaded_files/...
+                "filePath": row["file_path"],     
                 "fileFormat": row["file_format"],
                 "description": row["description"],
                 "createdAt": row["created_at"].isoformat() if row["created_at"] else None,
@@ -84,8 +82,7 @@ def get_multimodal_list():
         logger.info("Database connection closed for multimodal list.")
 
 
-# 2. 创建多模态数据（支持 multipart/form-data 上传文件，也支持纯 JSON）
-#    POST /api/multimodal
+# 创建多模态数据（支持 multipart/form-data 上传文件，也支持纯 JSON）
 @multimodal_bp.route('/api/multimodal', methods=['POST'])
 def create_multimodal():
     conn = None
@@ -125,7 +122,7 @@ def create_multimodal():
             source_pk = _id
 
         # 处理文件
-        file_path = None       # 存到数据库的相对路径
+        file_path = None      
         file_format = None
 
         if uploaded_file and uploaded_file.filename:
@@ -133,7 +130,7 @@ def create_multimodal():
             _, ext = os.path.splitext(filename)
             file_format = ext.lstrip(".").lower() if ext else None
 
-            # 按模态分子目录，如：uploaded_files/image
+            # 按模态分子目录
             sub_dir = (
                 modality
                 if modality in ["text", "image", "audio", "video", "pdf", "timeseries", "other"]
@@ -209,8 +206,7 @@ def create_multimodal():
         logger.info("Database connection closed for multimodal create.")
 
 
-# 3. 删除多模态数据（同时尝试删除物理文件）
-#    DELETE /api/multimodal/<id>
+# 删除多模态数据
 @multimodal_bp.route('/api/multimodal/<string:data_id>', methods=['DELETE'])
 def delete_multimodal(data_id):
     conn = None
@@ -221,7 +217,7 @@ def delete_multimodal(data_id):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # 先查文件路径（相对路径）
+        # 先查文件路径
         cursor.execute("SELECT file_path FROM multimodal_data WHERE id = %s", (data_id,))
         row = cursor.fetchone()
 
@@ -241,7 +237,7 @@ def delete_multimodal(data_id):
         conn.commit()
         logger.info("Multimodal record %s deleted from DB.", data_id)
 
-        # 尝试删文件（失败也不影响记录已删）
+        # 尝试删文件
         if file_path:
             if os.path.isabs(file_path):
                 abs_path = file_path
@@ -272,8 +268,7 @@ def delete_multimodal(data_id):
         logger.info("Database connection closed for multimodal delete.")
 
 
-# 4. 按 id 获取具体文件内容
-#    GET /api/multimodal/file/<id>
+# 按 id 获取具体文件内容
 @multimodal_bp.route('/api/multimodal/file/<string:data_id>', methods=['GET'])
 def get_multimodal_file(data_id):
     conn = None
