@@ -4,7 +4,7 @@ from mysql.connector import pooling
 # 配置数据库连接池
 db_config = {
     "pool_name": "medpool",
-    "pool_size": 10,
+    "pool_size": 32,
     "host": "localhost",
     "user": "root",
     "password": "root", # 请修改此处
