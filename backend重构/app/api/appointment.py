@@ -1,4 +1,3 @@
-# --- START OF FILE app/api/appointment.py ---
 from flask import Blueprint, request, jsonify
 from app.utils.db import get_db_connection
 import logging
@@ -8,7 +7,7 @@ import datetime
 appointment_bp = Blueprint('appointment', __name__)
 logger = logging.getLogger(__name__)
 
-# 1.7 获取预约数据(基础的多表连接)
+# 获取预约数据
 @appointment_bp.route('/api/appointments', methods=['GET'])
 def get_appointments():
     conn = None
@@ -21,10 +20,10 @@ def get_appointments():
         cursor = conn.cursor(dictionary=True)
 
         # 获取查询参数
-        role = request.args.get('role')  # 获取 role 参数
-        date = request.args.get('date')  # 获取 date 参数
-        doctor_id = request.args.get('doctor_id')  # 获取 doctor_id 参数
-        patient_id = request.args.get('patient_id')  # 获取 patient_id 参数
+        role = request.args.get('role')  
+        date = request.args.get('date')  
+        doctor_id = request.args.get('doctor_id')  
+        patient_id = request.args.get('patient_id')  
 
         # 构建基本查询 SQL，关联医生和科室
         sql = """
@@ -35,19 +34,18 @@ def get_appointments():
             LEFT JOIN departments dept ON a.department_id = dept.id
         """
 
-        # 如果提供了 patient_id 参数，返回该患者所有 pending 状态的挂号记录
+        # 若有 patient_id 参数，返回该患者所有 pending 状态的挂号记录
         if patient_id:
             sql += " WHERE a.patient_id = %s AND a.status = 'pending'"
             cursor.execute(sql, (patient_id,))
 
-        # 处理 role=admin 的情况，返回当天的所有挂号记录（包括 completed 和 pending）
+        # 当 role=admin 的情况，返回当天的所有挂号记录
         elif role == 'admin' and date:
             sql += " WHERE DATE(a.create_time) = %s"
             cursor.execute(sql, (date,))
 
-        # 如果提供了 doctor_id 参数，返回该科室的所有挂号记录
+        # 如有 doctor_id 参数，返回该科室的所有挂号记录
         elif doctor_id:
-            # 获取该医生所属的科室
             cursor.execute("SELECT department_id FROM doctors WHERE id = %s", (doctor_id,))
             doctor = cursor.fetchone()
             if doctor:
@@ -57,7 +55,7 @@ def get_appointments():
             else:
                 return jsonify({"error": "Doctor not found"}), 404
 
-        # 如果没有提供 role 和 doctor_id 参数，返回所有未完成挂号记录（pending 状态）
+        # 如果没有提供 role 和 doctor_id 参数，返回所有未完成挂号记录
         else:
             sql += " WHERE a.status = 'pending'"
 
@@ -69,11 +67,9 @@ def get_appointments():
         # 构造响应数据
         data = []
         for row in rows:
-            # 查询患者信息
             cursor.execute("SELECT name, phone, age FROM patients WHERE id = %s", (row['patient_id'],))
             patient = cursor.fetchone()
 
-            # 如果找不到患者信息，返回错误
             if not patient:
                 continue
 
@@ -92,13 +88,11 @@ def get_appointments():
                 "description": row['description']
             })
 
-        # 记录返回的 data
         logger.info("Returned data for appointments: %s", data)
 
         return jsonify(data)
 
     except Exception as e:
-        # 记录异常日志
         logger.error("Error occurred while fetching appointments: %s", str(e))
         return jsonify({"error": str(e)}), 500
 
@@ -110,7 +104,7 @@ def get_appointments():
         logger.info("Database connection closed.")
 
 
-# 1.8 新增接口：根据年、月、日统计预约数据
+# 根据年、月、日统计预约数据
 @appointment_bp.route('/api/appointments/statistics', methods=['GET'])
 def get_appointment_statistics():
     conn = None
@@ -123,8 +117,8 @@ def get_appointment_statistics():
         cursor = conn.cursor(dictionary=True)
 
         # 获取查询参数
-        date = request.args.get('date')  # 获取 date 参数, 格式：yyyy-mm-dd 或 yyyy-mm 或 yyyy
-        role = request.args.get('role')  # 获取 role 参数
+        date = request.args.get('date') 
+        role = request.args.get('role') 
 
         # 记录传入的请求参数
         logger.info("Received parameters: date=%s, role=%s", date, role)
@@ -132,21 +126,21 @@ def get_appointment_statistics():
         # 确定查询的时间区间
         if date:
             date_parts = date.split('-')
-            if len(date_parts) == 3:  # 年-月-日
+            if len(date_parts) == 3:  
                 year, month, day = map(int, date_parts)
                 start_date = datetime.datetime(year, month, day, 0, 0)
                 end_date = start_date + datetime.timedelta(days=1)
                 time_condition = "WHERE a.create_time >= %s AND a.create_time < %s"
                 params = (start_date, end_date)
                 logger.info("Date filter: Single day %s", date)
-            elif len(date_parts) == 2:  # 年-月
+            elif len(date_parts) == 2:  
                 year, month = map(int, date_parts)
                 start_date = datetime.datetime(year, month, 1, 0, 0)
                 end_date = (start_date + datetime.timedelta(days=32)).replace(day=1)
                 time_condition = "WHERE a.create_time >= %s AND a.create_time < %s"
                 params = (start_date, end_date)
                 logger.info("Date filter: Month %s", date)
-            elif len(date_parts) == 1:  # 仅年
+            elif len(date_parts) == 1:  
                 year = int(date_parts[0])
                 start_date = datetime.datetime(year, 1, 1, 0, 0)
                 end_date = datetime.datetime(year + 1, 1, 1, 0, 0)
@@ -183,20 +177,16 @@ def get_appointment_statistics():
         # 统计按小时分组
         hourly_stats = defaultdict(int)
         for row in rows:
-            # 确保 create_time 是 datetime 类型，并且处理微秒部分
             create_time = row['create_time']
-            if isinstance(create_time, str):  # 如果是字符串，转换为 datetime
+            if isinstance(create_time, str):  
                 try:
-                    # 修改为支持微秒部分
                     create_time = datetime.datetime.strptime(create_time, '%Y-%m-%d %H:%M:%S.%f')
                 except ValueError as e:
-                    # 如果有微秒部分，就按照这个格式进行解析
                     create_time = datetime.datetime.strptime(create_time, '%Y-%m-%d %H:%M:%S')
 
             hour = create_time.hour
             hourly_stats[hour] += 1
 
-        # 格式化每小时统计数据
         stats = [{"hour": hour, "count": count} for hour, count in sorted(hourly_stats.items())]
 
         # 记录统计数据
@@ -218,7 +208,7 @@ def get_appointment_statistics():
         # 记录数据库连接关闭
         logger.info("Database connection closed.")
 
-# 2.4 提交挂号 (CREATE APPOINTMENT)
+# 提交挂号
 @appointment_bp.route('/api/appointments', methods=['POST'])
 def create_appointment():
     data = request.json
@@ -233,9 +223,8 @@ def create_appointment():
 
         logger.info("Received data to create appointment: %s", data)
 
-        # 【高级查询 5】：合法性校验 - "有且仅有一个有效挂号"
-        # 逻辑：查询该患者在该科室是否已经有一个状态为 'pending' 的挂号。
-        # 如果 count > 0，则不允许再次挂号。
+        # 【高级查询】：合法性校验 - "有且仅有一个有效挂号"
+        # 逻辑：查询该患者在该科室是否已经有一个状态为 'pending' 的挂号。如果 count > 0，则不允许再次挂号。
         if patient_id:
             check_sql = """
                 SELECT COUNT(*) FROM appointments 
@@ -248,7 +237,7 @@ def create_appointment():
                 logger.warning("Patient ID %s already has a pending appointment in department %s", patient_id, dept_id)
                 return jsonify({"success": False, "message": "您在该科室已有待就诊的挂号，请勿重复挂号"}), 400
 
-        # 【高级查询 6】：分组与聚合 (GROUP BY & AGGREGATION)
+        # 【高级查询】：分组与聚合
         # 逻辑：如果没有指定医生，自动分配给该科室当前 'pending' 挂号最少的医生
         doctor_id = data.get('doctorId')
         if not doctor_id:
@@ -267,7 +256,7 @@ def create_appointment():
                 doctor_id = res[0]
                 logger.info("Assigned doctor ID %s to the appointment", doctor_id)
             else:
-                # 极端情况：该科室无医生
+                # 该科室无医生
                 logger.error("No available doctors in department %s", dept_id)
                 return jsonify({"success": False, "message": "该科室暂无医生排班"}), 400
 
@@ -300,7 +289,7 @@ def create_appointment():
         logger.info("Database connection closed.")
 
 
-# 2.5 更新挂号状态 (UPDATE APPOINTMENT STATUS)
+# 更新挂号状态
 @appointment_bp.route('/api/appointments/<string:apt_id>', methods=['PUT'])
 def update_appointment_status(apt_id):
     data = request.json

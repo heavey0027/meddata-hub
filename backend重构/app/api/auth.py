@@ -1,4 +1,3 @@
-# --- START OF FILE app/api/auth.py ---
 from flask import Blueprint, request, jsonify
 from app.utils.db import get_db_connection
 import logging
@@ -17,9 +16,9 @@ def login():
     cursor = None
 
     try:
-        # 1. 优先处理管理员登录 (无需查库)
+        # 管理员登录(无需查库)
         if role == 'admin':
-            # 这里硬编码
+            # 管理员账号密码为硬编码
             if user_id == 'admin' and password == 'admin123':
                 logger.info("Admin login successful: %s", user_id)
                 return jsonify({
@@ -31,7 +30,7 @@ def login():
                 logger.warning("Admin login failed: %s", user_id)
                 return jsonify({"success": False, "message": "管理员认证失败"}), 401
 
-        # 2. 普通角色登录 (查询数据库)
+        # 医患登录 (查询数据库)
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
@@ -69,6 +68,5 @@ def login():
         return jsonify({"success": False, "message": "服务器内部错误"}), 500
 
     finally:
-        # 必须在 finally 中关闭资源
         if cursor: cursor.close()
         if conn: conn.close()
