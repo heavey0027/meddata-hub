@@ -8,16 +8,16 @@ from app.utils.common import format_date
 patient_bp = Blueprint('patient', __name__)
 logger = logging.getLogger(__name__)
 
-# 1.4 所有患者信息
+# 获取所有患者信息
 @patient_bp.route('/api/patients', methods=['GET'])
 def get_patients():
     conn = None
     cursor = None
     try:
         # 记录请求日志
-        query = request.args.get('query')  # 获取查询参数，可能是 patient_id 或其他查询字段
-        limit = request.args.get('limit',type=int)  # 获取 limit 参数
-        offset = request.args.get('offset',type=int)  # 获取 offset 参数
+        query = request.args.get('query')  
+        limit = request.args.get('limit',type=int)  
+        offset = request.args.get('offset',type=int) 
 
         # 根据 query 参数决定日志内容
         if query:
@@ -28,11 +28,8 @@ def get_patients():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # 注意：不查询 password
-        # 【高级查询 2】：全称量词 / 关系除法 (Relational Division)
-        # 逻辑：查找“去过所有科室”的患者(特别需要关注的病人)。
-        # 实现：不存在(NOT EXISTS) 一个科室，该患者没有(NOT EXISTS) 去挂过号。
-        # 我们将其作为一个 Boolean 字段 'is_vip' 返回。
+        # 【高级查询】：全称量词 / 关系除法 
+        # 查找“去过所有科室”的患者(特别需要关注的病人)。
         sql = """
             SELECT 
                 p.id, p.name, p.gender, p.age, p.phone, p.address, p.create_time,
@@ -92,7 +89,7 @@ def get_patients():
             conn.close()
         logger.info("Database connection closed.")
 
-# 2.1 新增/注册患者
+# 新增/注册患者
 @patient_bp.route('/api/patients', methods=['POST'])
 def create_patient():
     data = request.json
@@ -105,7 +102,7 @@ def create_patient():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # 【高级查询 3】：存在性校验 (EXISTENCE)
+        # 【高级查询】：存在性校验
         # 只有当该 ID 不存在时才插入
         check_sql = "SELECT id FROM patients WHERE id = %s"
         cursor.execute(check_sql, (data.get('id'),))
@@ -113,7 +110,7 @@ def create_patient():
             logger.warning("Patient ID %s already exists. Registration failed.", data.get('id'))
             return jsonify({"success": False, "message": "ID已存在，请勿重复注册"}), 400
 
-        # 映射 JSON 字段 -> 数据库字段 (注意 createTime -> create_time)
+        # 映射 JSON 字段 -> 数据库字段
         sql = """
             INSERT INTO patients 
             (id, name, password, gender, age, phone, address, create_time)
@@ -142,12 +139,11 @@ def create_patient():
         return jsonify({"success": False, "message": str(e)}), 500
 
     finally:
-        # 必须在 finally 中关闭资源
         if cursor: cursor.close()
         if conn: conn.close()
         logger.info("Database connection closed.")
 
-# 2.2 更新患者信息 (UPDATE)
+# 更新患者信息
 @patient_bp.route('/api/patients/<string:p_id>', methods=['PUT'])
 def update_patient(p_id):
     data = request.json
@@ -188,7 +184,7 @@ def update_patient(p_id):
         if conn: conn.close()
         logger.info("Database connection closed.")
 
-# DELETE: 删除患者
+# 删除患者
 @patient_bp.route('/api/patients/<string:patient_id>', methods=['DELETE'])
 def delete_patient(patient_id):
     conn = None
@@ -201,16 +197,16 @@ def delete_patient(patient_id):
         # 开启事务，确保所有操作要么都成功，要么都失败
         conn.start_transaction()
 
-        # 1. 删除该患者的挂号记录
+        # 删除该患者的挂号记录
         cursor.execute("DELETE FROM appointments WHERE patient_id = %s", (patient_id,))
         logger.info("Deleted %d appointment records for patient %s.", cursor.rowcount, patient_id)
 
-        # 2. 删除该患者的病历记录 (这将通过级联删除自动删除相关的处方明细)
+        # 删除该患者的病历记录 (这将通过级联删除自动删除相关的处方明细)
         cursor.execute("DELETE FROM medical_records WHERE patient_id = %s", (patient_id,))
         logger.info("Deleted %d medical records for patient %s (and cascaded %d prescription details).", 
-                     cursor.rowcount, patient_id, cursor.rowcount) # cursor.rowcount 这里只能反映 medical_records 的删除数量
+                     cursor.rowcount, patient_id, cursor.rowcount) 
 
-        # 3. 删除患者本身
+        # 删除患者本身
         cursor.execute("DELETE FROM patients WHERE id = %s", (patient_id,))
         if cursor.rowcount == 0:
             conn.rollback()
@@ -258,12 +254,10 @@ def get_patient_count():
         return jsonify({"total_patients": total_patients})
 
     except Exception as e:
-        # 捕获并记录异常
         logger.error("Error occurred while fetching total number of patients: %s", str(e))
         return jsonify({"error": str(e)}), 500
 
     finally:
-        # 确保资源被关闭
         if cursor:
             cursor.close()
         if conn:
@@ -310,12 +304,10 @@ def get_gender_ratio():
         return jsonify(gender_ratio)
 
     except Exception as e:
-        # 捕获并记录异常
         logger.error("Error occurred while fetching patient gender ratio: %s", str(e))
         return jsonify({"error": str(e)}), 500
 
     finally:
-        # 确保资源被关闭
         if cursor:
             cursor.close()
         if conn:
@@ -365,14 +357,15 @@ def get_age_ratio():
         return jsonify(age_ratio)
 
     except Exception as e:
-        # 捕获并记录异常
         logger.error("Error occurred while fetching patient age ratio: %s", str(e))
         return jsonify({"error": str(e)}), 500
 
     finally:
-        # 确保资源被关闭
         if cursor:
             cursor.close()
         if conn:
             conn.close()
         logger.info("Database connection closed.")
+
+
+# --- END OF FILE app/api/patient.py ---
