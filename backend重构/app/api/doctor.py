@@ -1,4 +1,3 @@
-# --- START OF FILE app/api/doctor.py ---
 from flask import Blueprint, request, jsonify
 from app.utils.db import get_db_connection
 import logging
@@ -6,7 +5,7 @@ import logging
 doctor_bp = Blueprint('doctor', __name__)
 logger = logging.getLogger(__name__)
 
-# 1.2 所有医生(带子查询的高级查询)
+# 获取所有医生信息
 @doctor_bp.route('/api/doctors', methods=['GET'])
 def get_doctors():
     conn = None
@@ -18,7 +17,7 @@ def get_doctors():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # 【高级查询 1】：相关子查询 (Correlated Subquery)
+        # 【高级查询】：相关子查询 
         # 既查医生基本信息，又计算该医生当前有多少个 'pending' 状态的挂号
         sql = """
             SELECT 
@@ -31,7 +30,6 @@ def get_doctors():
         cursor.execute(sql)
         rows = cursor.fetchall()
 
-        # 字段名映射: department_id -> departmentId
         data = []
         for row in rows:
             data.append({
@@ -114,7 +112,7 @@ def update_doctor_detail(doctor_id):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # 如果前端传入 departmentId，先校验该科室是否存在
+        # 若有 departmentId，先校验该科室是否存在
         dept_id = data.get('departmentId')
         if dept_id:
             cursor.execute("SELECT id FROM departments WHERE id = %s", (dept_id,))
@@ -122,7 +120,7 @@ def update_doctor_detail(doctor_id):
                 logger.warning("Department %s not found when updating doctor %s.", dept_id, doctor_id)
                 return jsonify({"success": False, "message": "所属科室不存在"}), 400
 
-        # 构造更新语句（仅更新提供的字段）
+        # 构造更新语句
         fields = []
         params = []
         if 'name' in data:
@@ -165,7 +163,7 @@ def update_doctor_detail(doctor_id):
         if conn: conn.close()
         logger.info("Database connection closed for doctor update.")
 
-# DELETE: 删除医生 - 最简逻辑：若有病历/挂号关联，则无法删除。
+# 删除医生：若有病历/挂号关联，则无法删除
 @doctor_bp.route('/api/doctors/<string:doctor_id>', methods=['DELETE'])
 def delete_doctor(doctor_id):
     conn = None
@@ -175,7 +173,7 @@ def delete_doctor(doctor_id):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # 1. 检查该医生是否有任何相关的挂号记录 (ANY status)
+        # 检查该医生是否有任何相关的挂号记录
         cursor.execute("SELECT COUNT(*) FROM appointments WHERE doctor_id = %s", (doctor_id,))
         appointment_count = cursor.fetchone()[0]
 
@@ -186,7 +184,7 @@ def delete_doctor(doctor_id):
             )
             return jsonify({"success": False, "message": "无法删除：该医生仍有关联的挂号记录。请先处理相关挂号。"}), 400
 
-        # 2. 检查该医生是否有任何相关的病历记录
+        # 检查该医生是否有任何相关的病历记录
         cursor.execute("SELECT COUNT(*) FROM medical_records WHERE doctor_id = %s", (doctor_id,))
         record_count = cursor.fetchone()[0]
 
@@ -197,7 +195,7 @@ def delete_doctor(doctor_id):
             )
             return jsonify({"success": False, "message": "无法删除：该医生仍有关联的病历记录。请先处理相关病历。"}), 400
 
-        # 3. 如果没有关联记录，则执行删除医生操作
+        # 如果没有关联记录，则执行删除医生操作
         cursor.execute("DELETE FROM doctors WHERE id = %s", (doctor_id,))
         if cursor.rowcount == 0:
             conn.rollback()
