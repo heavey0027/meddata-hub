@@ -1,133 +1,77 @@
-# MedData Hub - 全栈开发实施手册 (后端开发标准)
+# MedData Hub - 后端接口汇总
 
-**核心约定：**
-1.  **通信协议**：RESTful API, JSON。
-2.  **字段命名**：
-    *   **前端 (JSON)**：统一使用 **小驼峰 (camelCase)**。
-    *   **数据库**：统一使用 **蛇形 (snake_case)**。
-    *   **后端职责**：负责在 API 层处理这两种命名风格的转换。
-3.  **鉴权**：登录返回 Token，后续请求 Header 携带（视具体实现而定）。
-
----
 
 ## 1. 认证模块
 
-### 登录
-*   **Endpoint**: `POST /api/login`
-*   **Payload**:
-    ```json
-    { "id": "DOC01", "password": "...", "role": "doctor" } // role: patient/doctor/admin
-    ```
-*   **Response**:
-    ```json
-    { "success": true, "token": "xyz...", "user": { "id": "...", "name": "...", "role": "..." } }
-    ```
+| 文件名           | 接口路径            | 操作方式 | 描述         |
+| :--------------- | :------------------ | :------- | :----------- |
+| `basic.py` | `/api/departments` | `GET`  | 获取所有科室信息                   |
 
----
 
-## 2. 基础数据 (Read-Only / Master Data)
+## 2. 基础数据 
 
-前端初始化时会并行拉取。
-
-| 资源 | Method & URL | Response JSON 关键字段 (CamelCase) | DB 对应关系 |
-| :--- | :--- | :--- | :--- |
-| **科室** | `GET /api/departments` | `id`, `name`, `location` | 1:1 映射 |
-| **医生** | `GET /api/doctors` | `id`, `name`, `departmentId`, `title`, `specialty` | `departmentId` -> `department_id` |
-| **药品** | `GET /api/medicines` | `id`, `name`, `price`, `stock`, `specification` | 1:1 映射 |
-
----
+| 文件名           | 接口路径            | 操作方式 | 描述         |
+| :--------------- | :------------------ | :------- | :----------- |
+| `basic.py` | `/api/departments`                 | `GET`    | 获取所有科室信息                       |
+| `basic.py` | `/api/departments/<department_id>` | `GET`    | 获取科室详情（包含医生数量）           |
+| `basic.py` | `/api/departments/<department_id>` | `DELETE` | 删除科室（需确保医生数量为0）          |
+| `basic.py` | `/api/medicines`                   | `GET`    | 获取所有药品信息                       |
+| `basic.py` | `/api/medicines/<medicine_id>`     | `GET`    | 获取某个药品详情                       |
+| `basic.py` | `/api/medicines/<medicine_id>`     | `PUT`    | 修改药品信息                           |
+| `basic.py` | `/api/medicines/<medicine_id>`     | `DELETE` | 删除药品（若有相关处方细则则无法删除） |
 
 ## 3. 患者管理
 
-### 获取列表
-*   **Endpoint**: `GET /api/patients`
-*   **Response**: `[{ "id", "name", "gender", "age", "phone", "createTime", ... }]`
-*   **注意**: 列表接口**禁止**返回密码字段。
+| 文件名           | 接口路径            | 操作方式 | 描述         |
+| :--------------- | :------------------ | :------- | :----------- |
+| `patient.py` | `/api/patients`              | `GET`    | 获取所有患者信息（支持按ID查询和分页，标记VIP） |
+| `patient.py` | `/api/patients`              | `POST`   | 新增/注册患者（包含ID存在性校验）               |
+| `patient.py` | `/api/patients/<p_id>`       | `PUT`    | 更新患者信息                                    |
+| `patient.py` | `/api/patients/<p_id>`       | `DELETE` | 删除患者（级联删除相关挂号和病历记录）          |
+| `patient.py` | `/api/patients/count`        | `GET`    | 查询患者总数                                    |
+| `patient.py` | `/api/patients/gender_ratio` | `GET`    | 患者性别比例统计                                |
+| `patient.py` | `/api/patients/age_ratio`    | `GET`    | 患者年龄比例统计                                |
 
-### 注册/新增
-*   **Endpoint**: `POST /api/patients`
-*   **Payload**: `{"id": "...", "name": "...", "password": "...", "gender": "...", ...}`
+## 4. 医生管理
 
-### 更新信息
-*   **Endpoint**: `PUT /api/patients/<id>`
-*   **Payload**: `{"phone": "...", "address": "...", ...}`
+| 文件名           | 接口路径            | 操作方式 | 描述         |
+| :--------------- | :------------------ | :------- | :----------- |
+| `doctor.py` | `/api/doctors`             | `GET`    | 获取所有医生信息（包含待处理挂号数量）  |
+| `doctor.py` | `/api/doctors/<doctor_id>` | `GET`    | 获取某个医生详情                        |
+| `doctor.py` | `/api/doctors/<doctor_id>` | `PUT`    | 修改医生信息                            |
+| `doctor.py` | `/api/doctors/<doctor_id>` | `DELETE` | 删除医生（若有病历/挂号关联则无法删除） |
 
----
+## 5. 核心业务：挂号
 
-## 4. 核心业务：挂号与排队
+| 文件名           | 接口路径                            | 操作方式 | 描述                       |
+| :--------------- | :---------------------------------- | :------- | :------------------------- |
+| `appointment.py` | `/api/appointments`                 | `GET`    | 获取预约数据               |
+| `appointment.py` | `/api/appointments/statistics`      | `GET`    | 根据年、月、日统计预约数据 |
+| `appointment.py` | `/api/appointments`                 | POST     | 提交挂号                   |
+| `appointment.py` | `/api/appointments/<string:apt_id>` | PUT      | 更新挂号状态               |
 
-### 挂号 (提交)
-*   **Endpoint**: `POST /api/appointments`
-*   **Payload**:
-    ```json
-    {
-      "patientName": "张三",
-      "departmentId": "D01",
-      "doctorId": "DOC01", // 可选
-      "description": "头痛",
-      "status": "pending"
-    }
-    ```
-*   **逻辑**: 后端需生成唯一 `id` 和 `create_time`。
+## 6. 核心业务：电子病历
 
-### 获取挂号列表
-*   **Endpoint**: `GET /api/appointments`
-*   **Response**: 包含 `status` ("pending", "completed", "cancelled")。建议 `JOIN` 科室名称。
+| 文件名           | 接口路径                            | 操作方式 | 描述                       |
+| :--------------- | :---------------------------------- | :------- | :------------------------- |
+| `record.py` | `/api/records`              | `GET`    | 获取所有（或某个患者）病历记录                     |
+| `record.py` | `/api/prescription_details` | `GET`    | 获取所有（或某个病历）处方细则                     |
+| `record.py` | `/api/records`              | `POST`   | 提交病历（包含主表和子表插入，事务处理，库存校验） |
+| `record.py` | `/api/records/<record_id>`  | `DELETE` | 删除病历（级联删除处方明细）                       |
 
-### 更新状态 (接诊/完成)
-*   **Endpoint**: `PUT /api/appointments/<id>`
-*   **Payload**: `{ "status": "completed" }`
-*   **场景**: 医生点击“完成诊疗”后，前端调用此接口将患者移出候诊队列。
+## 7.多模态数据
 
----
+| 文件名           | 接口路径                            | 操作方式 | 描述                       |
+| :--------------- | :---------------------------------- | :------- | :------------------------- |
+| `multimodal.py` | `/api/multimodal`                       | `GET`    | 获取多模态数据列表     |
+| `multimodal.py` | `/api/multimodal`                       | `POST`   | 创建多模态数据         |
+| `multimodal.py` | `/api/multimodal/<string:data_id>`      | `DELETE` | 删除多模态数据         |
+| `multimodal.py` | `/api/multimodal/file/<string:data_id>` | `GET`    | 按 id 获取具体文件内容 |
 
-## 5. 核心业务：电子病历 (Transactional)
+## 8.大数据统计
 
-### 历史病历查询
-*   **Endpoint**: `GET /api/records`
-*   **Query**: 支持按 `patientId` 过滤。
-*   **逻辑**: 需 `JOIN` 患者表和医生表，返回 `patientName` 和 `doctorName`。
-*   **Response**:
-    ```json
-    [{ "id": "R01", "patientName": "...", "doctorName": "...", "diagnosis": "...", "visitDate": "..." }]
-    ```
-
-### 获取处方明细
-*   **Endpoint**: `GET /api/prescription_details`
-*   **Query**: 按 `recordId` 过滤。
-*   **Response**: `[{ "medicineId": "...", "dosage": "...", "usage": "...", "days": 3 }]`
-    *   *注意*: DB字段为 `usage_info`，JSON为 `usage`。
-
-### **提交诊疗结果 (核心写接口)**
-*   **Endpoint**: `POST /api/records`
-*   **场景**: 医生提交病历。后端需开启**数据库事务**。
-*   **Payload**:
-    ```json
-    {
-      "record": {
-        "id": "R_TIMESTAMP",
-        "patientId": "P001",
-        "doctorId": "DOC01",
-        "diagnosis": "高血压",
-        "treatmentPlan": "...",
-        "visitDate": "2024-01-01"
-      },
-      "details": [
-        {
-          "id": "PD_UUID",
-          "medicineId": "MED01",
-          "dosage": "1片",
-          "usage": "每日一次", // 映射到 DB: usage_info
-          "days": 7
-        }
-        // ...更多药品
-      ]
-    }
-    ```
-*   **后端处理**:
-    1.  开启事务。
-    2.  Insert `medical_records`。
-    3.  Insert `prescription_details` (多条)。
-    4.  (可选) Update `medicines` 扣减库存。
-    5.  Commit 事务。
+| 文件名           | 接口路径                            | 操作方式 | 描述                       |
+| :--------------- | :---------------------------------- | :------- | :------------------------- |
+| `stats.py` | `/api/stats/sankey`       | `GET` | 统计桑基图数据                    |
+| `stats.py` | `/api/statistics/monthly` | `GET` | 按月份计算患者/就诊人数环比增长率 |
 
