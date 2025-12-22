@@ -3,11 +3,13 @@
 
 > **基于 React 19 + TypeScript 构建的下一代智能医院管理系统前端。**
 
-![React](https://img.shields.io/badge/React-19.0-blue?logo=react)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)
-![Vite](https://img.shields.io/badge/Build-Vite-yellow?logo=vite)
-![TailwindCSS](https://img.shields.io/badge/Style-Tailwind-38bdf8?logo=tailwindcss)
-![License](https://img.shields.io/badge/License-MIT-green)
+<center>
+  <img src="https://img.shields.io/badge/React-19.0-blue?logo=react" />
+  <img src="https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript" />
+  <img src="https://img.shields.io/badge/Build-Vite-yellow?logo=vite" />
+  <img src="https://img.shields.io/badge/Style-Tailwind-38bdf8?logo=tailwindcss" />
+  <img src="https://img.shields.io/badge/License-MIT-green" />
+</center>
 
 **MedData Hub** 是一个模拟现代化数字医院全流程的单页应用（SPA）。它集成了挂号分诊、电子病历、药房库存管理以及基于大模型的 AI 辅助诊断功能。
 
