@@ -1,3 +1,4 @@
+# --- START OF FILE app/api/appointment.py ---
 from flask import Blueprint, request, jsonify
 from app.utils.db import get_db_connection
 import logging
@@ -323,3 +324,4 @@ def update_appointment_status(apt_id):
         if cursor: cursor.close()
         if conn: conn.close()
         logger.info("Database connection closed for appointment ID: %s", apt_id)
+# --- END OF FILE app/api/appointment.py ---
