@@ -35,7 +35,7 @@
 
 ### 3.2 目录结构 (Directory Structure)
 ```text
-MedDataHub/
+MedDataHub/backend重构
 ├── run.py                   # [门面模式] 应用程序唯一入口
 ├── app/                     # [核心包] 应用主体
 │   ├── __init__.py          # [工厂模式] 应用工厂与配置中心
@@ -47,6 +47,8 @@ MedDataHub/
 │       ├── basic.py         # 基础数据域 (科室、药品)
 │       ├── doctor.py        # 医生域
 │       ├── patient.py       # 患者域
+│       ├── stats.py         # 统计数据域
+│       ├── multimodal.py    # 多模态域
 │       ├── record.py        # 病历与处方域
 │       └── appointment.py   # 挂号与统计域
 └── app.log                  # 运行时日志
@@ -104,23 +106,7 @@ MedDataHub/
 *   **挂号自动分配** -> `api/appointment.py`:
     *   结合 `GROUP BY` 和聚合函数，实现基于医生负载的自动排班逻辑。
 
-## 6. API 接口清单 (按模块划分)
-
-| 模块 | 方法 | 路径 | 描述 |
-| :--- | :--- | :--- | :--- |
-| **Auth** | POST | `/api/login` | 用户与管理员登录 |
-| **Basic** | GET | `/api/departments` | 获取所有科室 |
-| **Basic** | GET | `/api/medicines` | 获取药品列表 |
-| **Doctor** | GET | `/api/doctors` | 获取医生列表(含统计) |
-| **Patient** | GET | `/api/patients` | 获取患者列表(含VIP) |
-| **Patient** | POST | `/api/patients` | 注册新患者 |
-| **Record** | GET | `/api/records` | 获取病历记录 |
-| **Record** | POST | `/api/records` | **提交病历(事务)** |
-| **Appt** | GET | `/api/appointments` | 获取挂号记录 |
-| **Appt** | GET | `/api/appointments/statistics` | 预约数据统计 |
-| **Appt** | POST | `/api/appointments` | 提交挂号(含自动分配) |
-
-## 7. 部署与运行
+## 6. 部署与运行
 
 *   **入口文件**: `run.py`
 *   **启动命令**: `python run.py`
