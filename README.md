@@ -83,7 +83,7 @@ pip install -r requirements.txt
 # 启动服务
 python run.py
 ```
-*后端服务默认运行在 `http://localhost:3000`*
+*后端服务默认运行在 `http://localhost:5000`*
 
 ### 4. 前端启动 (Frontend)
 
@@ -97,7 +97,7 @@ yarn
 # 启动开发服务器
 yarn dev
 ```
-*访问 `http://localhost:5000` (Vite 默认端口) 即可体验。*
+*访问 `http://localhost:3000` 即可体验。*
 
 > **提示**: 如果未启动后端，前端会自动检测并切换至 **Mock 模式**，您依然可以体验所有功能。
 
