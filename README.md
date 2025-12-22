@@ -20,7 +20,7 @@
 
 ## 核心特性 (Key Features)
 
-### 🖥️ 前端交互 (Frontend)
+### 前端交互 (Frontend)
 *   **混合架构**: “API 优先，Mock 兜底”策略，确保演示稳定性。
 *   **严格权限控制 (RBAC)**: 患者/医生/管理员三级权限体系，视图与操作完全隔离。
 *   **AI 智能集成**:
@@ -28,7 +28,7 @@
     *   **RAG 问答**: 基于医院数据的上下文增强对话助手。
 *   **数据可视化**: 动态桑基图 (Sankey Diagram) 展示患者流转，运营数据大屏。
 
-### ⚙️ 后端架构 (Backend)
+### 后端架构 (Backend)
 *   **模块化单体 (Modular Monolith)**: 基于 Flask Blueprint 实现业务领域（Auth, Patient, Doctor 等）的物理隔离。
 *   **复杂业务逻辑**:
     *   **事务脚本模式**: 确保病历写入与库存扣减的原子性。
@@ -41,12 +41,12 @@
 
 本项目包含详尽的全栈架构与逻辑说明文档。
 
-### 🏗️ 系统架构
+### 系统架构
 *   **[前端架构设计](./docs/FRONTEND_ARCHITECTURE.md)**: 技术选型、混合数据层模式及核心依赖。
-*   **[后端架构设计](./docs/BACKEND_ARCHITECTURE.md)**: 蓝图设计、应用工厂模式及核心设计模式说明。
-*   **[API 接口文档](./docs/API_DOCUMENTATION.md)**: 包含认证、挂号、病历、统计等全量接口说明。
+*   **[后端架构设计](./backend/BACKEND_ARCHITECTURE.md)**: 蓝图设计、应用工厂模式及核心设计模式说明。
+*   **[API 接口文档](./backend/API_DOCUMENTATION.md)**: 包含认证、挂号、病历、统计等全量接口说明。
 
-### 📘 逻辑与组件
+### 逻辑与组件
 *   **[前端核心逻辑](./docs/SERVICES_LOGIC.md)**: Mock 引擎、Auth 流程及 AI 适配器。
 *   **UI 组件手册**:
     *   [核心基础 (Core)](./docs/ui/CORE.md) | [临床业务 (Clinical)](./docs/ui/CLINICAL.md)
@@ -83,7 +83,7 @@ pip install -r requirements.txt
 # 启动服务
 python run.py
 ```
-*后端服务默认运行在 `http://localhost:5000`*
+*后端服务默认运行在 `http://localhost:3000`*
 
 ### 4. 前端启动 (Frontend)
 
@@ -97,7 +97,7 @@ yarn
 # 启动开发服务器
 yarn dev
 ```
-*访问 `http://localhost:5173` (Vite 默认端口) 即可体验。*
+*访问 `http://localhost:5000` (Vite 默认端口) 即可体验。*
 
 > **提示**: 如果未启动后端，前端会自动检测并切换至 **Mock 模式**，您依然可以体验所有功能。
 

@@ -35,7 +35,7 @@
 
 ### 3.2 目录结构 (Directory Structure)
 ```text
-MedDataHub/backend重构
+MedDataHub/backend
 ├── run.py                   # [门面模式] 应用程序唯一入口
 ├── app/                     # [核心包] 应用主体
 │   ├── __init__.py          # [工厂模式] 应用工厂与配置中心
