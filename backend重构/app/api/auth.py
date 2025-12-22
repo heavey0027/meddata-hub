@@ -1,3 +1,4 @@
+# --- START OF FILE app/api/auth.py ---
 from flask import Blueprint, request, jsonify
 from app.utils.db import get_db_connection
 import logging
@@ -70,3 +71,4 @@ def login():
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+# --- END OF FILE app/api/auth.py ---
