@@ -2,7 +2,7 @@
 import logging
 from flask import Flask
 from flask_cors import CORS
-
+from app.utils.common import check_timestamp
 
 def setup_logging():
     """配置全局日志"""
@@ -56,6 +56,12 @@ def create_app():
     app.register_blueprint(appointment_bp)  # /api/appointments
     app.register_blueprint(stats_bp) # /api/stats
     app.register_blueprint(multimodal_bp)  # /api/multimodal
+
+    @app.before_request
+    def before_request():
+        error = check_timestamp()
+        if error:
+            return error  # 校验失败，返回错误信息
 
     @app.route('/')
     def index():
