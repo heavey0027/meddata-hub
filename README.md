@@ -52,6 +52,18 @@
     *   [核心基础 (Core)](./docs/ui/CORE.md) | [临床业务 (Clinical)](./docs/ui/CLINICAL.md)
     *   [患者服务 (Patient)](./docs/ui/PATIENT.md) | [后台管理 (Admin)](./docs/ui/ADMIN.md)
 
+### 后端逻辑与模块
+* **核心文档**：
+  * [应用启动流程（App Bootstrap）](./BACKEND_ARCHITECTURE/核心文档/BACKEND_APP_BOOTSTRAP.md)
+  * [后端文档总览（Summary）](./BACKEND_ARCHITECTURE/核心文档/BACKEND_MODULES_SUMMARY.md)
+* **业务模块文档**：
+  * [认证 Auth](./BACKEND_ARCHITECTURE/业务模块/BACKEND_API_AUTH.md) | [患者 Patient](./BACKEND_ARCHITECTURE/业务模块/BACKEND_API_PATIENT.md)
+  * [医生 Doctor](./BACKEND_ARCHITECTURE/业务模块/BACKEND_API_DOCTOR.md) | [挂号 Appointment](./BACKEND_ARCHITECTURE/业务模块/BACKEND_API_APPOINTMENT.md)
+  * [病历 Record](./BACKEND_ARCHITECTURE/业务模块/BACKEND_API_RECORD.md) | [基础数据 Basic](./BACKEND_ARCHITECTURE/业务模块/BACKEND_API_BASIC.md)
+  * [多模态 Multimodal](./BACKEND_ARCHITECTURE/业务模块/BACKEND_API_MULTIMODAL.md) | [统计 Stats](./BACKEND_ARCHITECTURE/业务模块/BACKEND_API_STATS.md)
+* **系统辅助文档**：
+  * [工具层 Utils](./BACKEND_ARCHITECTURE/系统辅助/BACKEND_UTILS.md) | [数据初始化 Data Init](./BACKEND_ARCHITECTURE/系统辅助/BACKEND_DATA_INIT.md)
+  * [文件系统与多模态设计](./BACKEND_ARCHITECTURE/系统辅助/BACKEND_DATA_FILES_AND_MULTIMODAL.md)
 ---
 
 ## 快速开始 (Getting Started)
