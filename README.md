@@ -43,8 +43,7 @@
 
 ### 系统架构
 *   **[前端架构设计](./docs/FRONTEND_ARCHITECTURE.md)**: 技术选型、混合数据层模式及核心依赖。
-*   **[后端架构设计](./BACKEND_ARCHITECTURE
-                    /BACKEND_ARCHITECTURE.md)**: 蓝图设计、应用工厂模式及核心设计模式说明。
+*   **[后端架构设计](./BACKEND_ARCHITECTURE/BACKEND_ARCHITECTURE.md)**: 蓝图设计、应用工厂模式及核心设计模式说明。
 *   **[API 接口文档](./BACKEND_ARCHITECTURE/API_DOCUMENTATION.md)**: 包含认证、挂号、病历、统计等全量接口说明。
 
 ### 逻辑与组件
