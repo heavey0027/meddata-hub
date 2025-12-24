@@ -42,15 +42,15 @@
 本项目包含详尽的全栈架构与逻辑说明文档。
 
 ### 系统架构
-*   **[前端架构设计](./docs/FRONTEND_ARCHITECTURE.md)**: 技术选型、混合数据层模式及核心依赖。
+*   **[前端架构设计](./docs/FRONTEND/FRONTEND_ARCHITECTURE.md)**: 技术选型、混合数据层模式及核心依赖。
 *   **[后端架构设计](./BACKEND_ARCHITECTURE/BACKEND_ARCHITECTURE.md)**: 蓝图设计、应用工厂模式及核心设计模式说明。
 *   **[API 接口文档](./BACKEND_ARCHITECTURE/API_DOCUMENTATION.md)**: 包含认证、挂号、病历、统计等全量接口说明。
 
 ### 逻辑与组件
-*   **[前端核心逻辑](./docs/SERVICES_LOGIC.md)**: Mock 引擎、Auth 流程及 AI 适配器。
+*   **[前端核心逻辑](./docs/FRONTEND/SERVICES_LOGIC.md)**: Mock 引擎、Auth 流程及 AI 适配器。
 *   **UI 组件手册**:
-    *   [核心基础 (Core)](./docs/ui/CORE.md) | [临床业务 (Clinical)](./docs/ui/CLINICAL.md)
-    *   [患者服务 (Patient)](./docs/ui/PATIENT.md) | [后台管理 (Admin)](./docs/ui/ADMIN.md)
+    *   [核心基础 (Core)](./docs/FRONTEND/ui/CORE.md) | [临床业务 (Clinical)](./docs/FRONTEND/ui/CLINICAL.md)
+    *   [患者服务 (Patient)](./docs/FRONTEND/ui/PATIENT.md) | [后台管理 (Admin)](./docs/FRONTEND/ui/ADMIN.md)
 
 ### 后端逻辑与模块
 * **核心文档**：
