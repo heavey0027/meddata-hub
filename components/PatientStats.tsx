@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { 
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
@@ -6,7 +5,7 @@ import {
 } from 'recharts';
 import { getPatientDemographics, getAppointmentStatistics, getLocalDate, getSankeyData, getMonthlyStatistics } from '../services/mockDb';
 import { PatientDemographics, MonthlyStats } from '../types';
-import { Users, FileText, Activity, ArrowUpRight, ArrowDownRight, Clock, Filter, GitMerge, TrendingUp, CalendarDays } from 'lucide-react';
+import { Users, Activity, ArrowUpRight, ArrowDownRight, Clock, Filter, GitMerge, TrendingUp, CalendarDays } from 'lucide-react';
 
 const SANKEY_PALETTE = [
   '#6366F1', '#EC4899', '#10B981', '#F59E0B', '#3B82F6', '#8B5CF6', 
@@ -15,7 +14,6 @@ const SANKEY_PALETTE = [
 
 // --- 核心逻辑：计算下沉偏移量 ---
 // 根据 x 坐标（层级）决定向下移动多少像素
-// 这实现了 "往下走点" 的需求，打破了默认的垂直居中
 const getVerticalShift = (x: number) => {
   if (isNaN(x)) return 0;
   // 假设画布宽度约 1000px
@@ -87,7 +85,6 @@ const MyCustomLink = (props: any) => {
   const ty = targetY + targetShift;
 
   // 重新构建贝塞尔曲线路径
-  // 保持水平控制点 x 不变，但 y 坐标需要跟随 shift
   const linkPath = `
     M${sourceX},${sy}
     C${sourceControlX},${sy} ${targetControlX},${ty} ${targetX},${ty}
@@ -161,9 +158,12 @@ export const PatientStats: React.FC = () => {
   const [monthlyStats, setMonthlyStats] = useState<MonthlyStats | null>(null);
   const [loadingMonthly, setLoadingMonthly] = useState(false);
 
-  // -- 新增：6个月趋势数据 --
+  // -- 6个月趋势数据 --
   const [sixMonthTrend, setSixMonthTrend] = useState<any[]>([]);
   const [loadingTrend6, setLoadingTrend6] = useState(false);
+  
+  // -- 新增：控制趋势图显示的视图状态 --
+  const [trendView, setTrendView] = useState<'patients' | 'visits'>('patients');
 
   useEffect(() => {
     const loadStats = async () => {
@@ -186,7 +186,7 @@ export const PatientStats: React.FC = () => {
 
     loadStats();
     loadSankey();
-    loadSixMonthTrend(); // 初始加载6个月趋势
+    loadSixMonthTrend(); 
   }, []);
 
   // -- 加载当前选中月份的详细 KPI --
@@ -201,7 +201,7 @@ export const PatientStats: React.FC = () => {
     loadMonthly();
   }, [selectedMonth]);
 
-  // -- 新增：获取过去6个月的趋势数据 --
+  // -- 获取过去6个月的趋势数据 --
   const loadSixMonthTrend = async () => {
     setLoadingTrend6(true);
     const months = [];
@@ -213,7 +213,6 @@ export const PatientStats: React.FC = () => {
     }
 
     try {
-      // 并发请求过去6个月的数据
       const results = await Promise.all(months.map(m => getMonthlyStatistics(m)));
       const trend = results.map(r => ({
         name: r.month,
@@ -347,22 +346,79 @@ export const PatientStats: React.FC = () => {
             </div>
         </div>
 
-        <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden">
+        {/* --- 修改后的趋势图模块: 带切换按钮 --- */}
+        <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden flex flex-col">
             {loadingTrend6 && <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-10 flex items-center justify-center animate-pulse text-indigo-600 font-bold">趋势加载中...</div>}
-            <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
-                <Activity className="h-5 w-5 text-indigo-500" />
-                业务增长趋势 (最近 6 个月)
-            </h3>
-            <div className="h-56">
+            
+            {/* 头部：标题 + 切换按钮 */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+                <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                    <Activity className={`h-5 w-5 ${trendView === 'patients' ? 'text-indigo-500' : 'text-emerald-500'}`} />
+                    {trendView === 'patients' ? '患者建档增长趋势' : '就诊人次流量趋势'} (近6个月)
+                </h3>
+                
+                {/* 切换按钮组 */}
+                <div className="flex bg-gray-100 p-1 rounded-lg">
+                    <button
+                        onClick={() => setTrendView('patients')}
+                        className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all duration-200 ${
+                            trendView === 'patients' 
+                            ? 'bg-white text-indigo-600 shadow-sm' 
+                            : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                    >
+                        建档总数
+                    </button>
+                    <button
+                        onClick={() => setTrendView('visits')}
+                        className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all duration-200 ${
+                            trendView === 'visits' 
+                            ? 'bg-white text-emerald-600 shadow-sm' 
+                            : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                    >
+                        就诊人次
+                    </button>
+                </div>
+            </div>
+
+            {/* 图表区域 */}
+            <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={sixMonthTrend} margin={{top: 10, right: 30, left: 0, bottom: 0}}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f5" />
-                        <XAxis dataKey="name" tick={{fontSize: 12, fontWeight: 'bold'}} />
-                        <YAxis tick={{fontSize: 12}} />
-                        <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
-                        <Legend iconType="circle" />
-                        <Line type="monotone" dataKey="patients" name="建档总数" stroke="#6366F1" strokeWidth={4} dot={{ r: 4, fill: '#6366F1', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 8 }} />
-                        <Line type="monotone" dataKey="visits" name="就诊人次" stroke="#10B981" strokeWidth={4} dot={{ r: 4, fill: '#10B981', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 8 }} />
+                        <XAxis dataKey="name" tick={{fontSize: 12, fontWeight: 'bold', fill: '#6B7280'}} axisLine={false} tickLine={false} dy={10} />
+                        <YAxis tick={{fontSize: 12, fill: '#6B7280'}} axisLine={false} tickLine={false} />
+                        <RechartsTooltip 
+                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} 
+                            cursor={{ stroke: '#E5E7EB', strokeWidth: 2 }}
+                        />
+                        <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }}/>
+                        
+                        {/* 根据状态条件渲染不同的 Line */}
+                        {trendView === 'patients' ? (
+                            <Line 
+                                type="monotone" 
+                                dataKey="patients" 
+                                name="建档总数" 
+                                stroke="#6366F1" 
+                                strokeWidth={4} 
+                                dot={{ r: 4, fill: '#6366F1', strokeWidth: 2, stroke: '#fff' }} 
+                                activeDot={{ r: 8, strokeWidth: 0 }}
+                                animationDuration={1000}
+                            />
+                        ) : (
+                            <Line 
+                                type="monotone" 
+                                dataKey="visits" 
+                                name="就诊人次" 
+                                stroke="#10B981" 
+                                strokeWidth={4} 
+                                dot={{ r: 4, fill: '#10B981', strokeWidth: 2, stroke: '#fff' }} 
+                                activeDot={{ r: 8, strokeWidth: 0 }} 
+                                animationDuration={1000}
+                            />
+                        )}
                     </LineChart>
                 </ResponsiveContainer>
             </div>
