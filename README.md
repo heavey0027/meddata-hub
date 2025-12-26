@@ -43,8 +43,8 @@
 
 ### 系统架构
 *   **[前端架构设计](./docs/FRONTEND/FRONTEND_ARCHITECTURE.md)**: 技术选型、混合数据层模式及核心依赖。
-*   **[后端架构设计](./BACKEND_ARCHITECTURE/BACKEND_ARCHITECTURE.md)**: 蓝图设计、应用工厂模式及核心设计模式说明。
-*   **[API 接口文档](./BACKEND_ARCHITECTURE/API_DOCUMENTATION.md)**: 包含认证、挂号、病历、统计等全量接口说明。
+*   **[后端架构设计](./docs/BACKEND/BACKEND_ARCHITECTURE.md)**: 蓝图设计、应用工厂模式及核心设计模式说明。
+*   **[API 接口文档](./docs/BACKEND/API_DOCUMENTATION.md)**: 包含认证、挂号、病历、统计等全量接口说明。
 
 ### 逻辑与组件
 *   **[前端核心逻辑](./docs/FRONTEND/SERVICES_LOGIC.md)**: Mock 引擎、Auth 流程及 AI 适配器。
@@ -54,16 +54,16 @@
 
 ### 后端逻辑与模块
 * **核心文档**：
-  * [应用启动流程（App Bootstrap）](./BACKEND_ARCHITECTURE/核心文档/BACKEND_APP_BOOTSTRAP.md)
-  * [后端文档总览（Summary）](./BACKEND_ARCHITECTURE/核心文档/BACKEND_MODULES_SUMMARY.md)
+  * [应用启动流程（App Bootstrap）](./docs/BACKEND/核心文档/BACKEND_APP_BOOTSTRAP.md)
+  * [后端文档总览（Summary）](./docs/BACKEND/核心文档/BACKEND_MODULES_SUMMARY.md)
 * **业务模块文档**：
-  * [认证 Auth](./BACKEND_ARCHITECTURE/业务模块/BACKEND_API_AUTH.md) | [患者 Patient](./BACKEND_ARCHITECTURE/业务模块/BACKEND_API_PATIENT.md)
-  * [医生 Doctor](./BACKEND_ARCHITECTURE/业务模块/BACKEND_API_DOCTOR.md) | [挂号 Appointment](./BACKEND_ARCHITECTURE/业务模块/BACKEND_API_APPOINTMENT.md)
-  * [病历 Record](./BACKEND_ARCHITECTURE/业务模块/BACKEND_API_RECORD.md) | [基础数据 Basic](./BACKEND_ARCHITECTURE/业务模块/BACKEND_API_BASIC.md)
-  * [多模态 Multimodal](./BACKEND_ARCHITECTURE/业务模块/BACKEND_API_MULTIMODAL.md) | [统计 Stats](./BACKEND_ARCHITECTURE/业务模块/BACKEND_API_STATS.md)
+  * [认证 Auth](./docs/BACKEND/业务模块/BACKEND_API_AUTH.md) | [患者 Patient](./docs/BACKEND/业务模块/BACKEND_API_PATIENT.md)
+  * [医生 Doctor](./docs/BACKEND/业务模块/BACKEND_API_DOCTOR.md) | [挂号 Appointment](./docs/BACKEND/业务模块/BACKEND_API_APPOINTMENT.md)
+  * [病历 Record](./docs/BACKEND/业务模块/BACKEND_API_RECORD.md) | [基础数据 Basic](./docs/BACKEND/业务模块/BACKEND_API_BASIC.md)
+  * [多模态 Multimodal](./docs/BACKEND/业务模块/BACKEND_API_MULTIMODAL.md) | [统计 Stats](./docs/BACKEND/业务模块/BACKEND_API_STATS.md)
 * **系统辅助文档**：
-  * [工具层 Utils](./BACKEND_ARCHITECTURE/系统辅助/BACKEND_UTILS.md) | [数据初始化 Data Init](./BACKEND_ARCHITECTURE/系统辅助/BACKEND_DATA_INIT.md)
-  * [文件系统与多模态设计](./BACKEND_ARCHITECTURE/系统辅助/BACKEND_DATA_FILES_AND_MULTIMODAL.md)
+  * [工具层 Utils](./docs/BACKEND/系统辅助/BACKEND_UTILS.md) | [数据初始化 Data Init](./docs/BACKEND/系统辅助/BACKEND_DATA_INIT.md)
+  * [文件系统与多模态设计](./docs/BACKEND/系统辅助/BACKEND_DATA_FILES_AND_MULTIMODAL.md)
 ---
 
 ## 快速开始 (Getting Started)
