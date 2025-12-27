@@ -12,8 +12,12 @@ DB_CONFIG = {
 }
 
 # ================= 生成规模配置 =================
-START_DATE = datetime(2025, 1, 1)
-END_DATE = datetime(2025, 12, 31)
+current_year = datetime.now().year
+
+# 动态生成该年的起始和结束时间
+START_DATE = datetime(current_year, 1, 1)
+END_DATE = datetime(current_year, 12, 31)
+
 DAILY_MIN_VISITS = 35
 DAILY_MAX_VISITS = 75
 NUM_PATIENTS = 1500
@@ -146,7 +150,7 @@ def generate_people(cursor):
 
 
 def generate_sankey_flow_data(cursor, doc_ids, pat_ids):
-    print(f"🌊 正在生成桑基图数据流 (2023-2026)...")
+    print(f"🌊 正在生成桑基图数据流 ({current_year})...")
     print("   目标模型: 挂号(100%) -> 诊疗完成(75%) -> 开具处方(45%)")
 
     # 辅助映射

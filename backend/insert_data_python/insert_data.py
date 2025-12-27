@@ -12,8 +12,13 @@ DB_CONFIG = {
 }
 
 # ================= 生成配置 =================
-START_DATE = datetime(2025, 1, 1)  # 起始日期
-END_DATE = datetime(2025, 12, 31)  # 结束日期
+# 获取当前年份
+current_year = datetime.now().year
+
+# 动态生成该年的起始和结束时间
+START_DATE = datetime(current_year -2, 1, 1)
+END_DATE = datetime(current_year +1 , 12, 31)
+
 # 每天挂号人数范围 (模拟每日波动)
 DAILY_MIN_VISITS = 10
 DAILY_MAX_VISITS = 30
@@ -148,7 +153,7 @@ def generate_people(cursor):
 
 
 def generate_business(cursor, doc_ids, pat_ids):
-    print(f"📅 正在生成 2023-2026 每一天的数据 (这可能需要一分钟)...")
+    print(f"📅 正在生成 {current_year -2}-{current_year +1} 每一天的数据 (这可能需要一分钟)...")
 
     # 辅助映射
     cursor.execute("SELECT id, department_id, name FROM doctors")
@@ -278,7 +283,6 @@ def main():
 
         conn.commit()
         print("\n🎉🎉🎉 数据库构建完成！")
-        print("💡 提示: 这是一个包含了 2025 完整时间周期的数据库。")
 
     except Exception as e:
         print(f"❌ 错误: {e}")
