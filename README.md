@@ -48,7 +48,7 @@
 *   **[后端架构设计](./docs/BACKEND/BACKEND_ARCHITECTURE.md)**: 蓝图设计、应用工厂模式及核心设计模式说明。
 *   **[API 接口文档](./docs/BACKEND/API_DOCUMENTATION.md)**: 包含认证、挂号、病历、统计等全量接口说明。
 
-### 逻辑与组件
+### 前端逻辑与组件
 *   **[前端核心逻辑](./docs/FRONTEND/SERVICES_LOGIC.md)**: 核心服务层、Auth 流程及 AI 适配器。
 *   **UI 组件手册**:
     *   [核心基础 (Core)](./docs/FRONTEND/ui/CORE.md) | [临床业务 (Clinical)](./docs/FRONTEND/ui/CLINICAL.md)

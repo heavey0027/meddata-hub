@@ -52,16 +52,30 @@
 
 ```text
 meddata_hub/src
-├── components/              # UI 展示层 (按业务拆分)
-│   ├── ...                  # 具体业务组件 (详见 docs/ui/*.md)
+├── components/              # UI 组件集合
+│   ├── AppointmentHall.tsx  # 挂号大厅 (患者预约入口)
+│   ├── AskAI.tsx            # AI 智能问答助手
+│   ├── Dashboard.tsx        # 管理员总览仪表盘
+│   ├── DoctorConsultation.tsx # 医生接诊工作台
+│   ├── DoctorList.tsx       # 医生名录管理
+│   ├── Login.tsx            # 统一身份认证页 (登录/注册)
+│   ├── MedicineInventory.tsx# 药房库存与药品管理
+│   ├── MultimodalManager.tsx# 多模态数据(文件)管理
+│   ├── MyAppointments.tsx   # 我的预约记录 (患者端)
+│   ├── PatientHistory.tsx   # 患者完整病历历史视图
+│   ├── PatientList.tsx      # 患者列表 (分诊/管理)
+│   ├── PatientStats.tsx     # 患者数据统计分析图表
+│   ├── RadiologyAI.tsx      # 影像科 AI 辅助诊断
+│   ├── Resources.tsx        # 医院资源配置
+│   └── SystemLogs.tsx       # 前端系统日志查看器 (Debug)
 ├── services/                # 核心业务逻辑层
-│   ├── apiService.ts        # HTTP 请求客户端与数据聚合 (API Client)
-│   ├── authService.ts       # 认证与 Session 管理
-│   ├── aiService.ts         # AI 模型适配器 (Gemini/OpenAI)
+│   ├── aiService.ts         # AI 模型适配与调用
+│   ├── apiService.ts        # 后端 API 客户端与数据聚合
+│   ├── authService.ts       # 认证流程、Session 存储与权限校验
 │   └── logger.ts            # 本地日志系统 (用于调试与审计)
-├── App.tsx                  # 根组件 (路由配置、全局 Context)
+├── App.tsx                  # 根组件 (路由配置、全局 Layout、守卫)
 ├── index.tsx                # 应用入口 (DOM 挂载、样式引入)
-└── types.ts                 # 全局 TypeScript 类型定义 (Interfaces/Types)
+└── types.ts                 # 全局 TypeScript 类型定义 (Interfaces)
 ```
 
 ---
