@@ -1,4 +1,5 @@
-CREATE schema `meddata_hub` ;
+CREATE DATABASE IF NOT EXISTS meddata_hub; 
+USE meddata_hub
 
 CREATE TABLE `meddata_hub`.`departments` (
   `id` VARCHAR(50) NOT NULL,

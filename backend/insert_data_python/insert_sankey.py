@@ -1,3 +1,4 @@
+import os
 import mysql.connector
 from faker import Faker
 import random
@@ -5,10 +6,10 @@ from datetime import datetime, timedelta
 
 # ================= 数据库配置 =================
 DB_CONFIG = {
-    "host": "localhost",
-    "user": "root",
-    "password": "root",  # <--- 请确保密码正确
-    "database": "meddata_hub"
+    "host": os.getenv("DB_HOST", "localhost"),
+    "user": os.getenv("DB_USER", "root"),
+    "password": os.getenv("DB_PASSWORD", "root"), # 如果你在 docker-compose 里设了 rootpassword，这里默认值无所谓，因为会读环境变量
+    "database": os.getenv("DB_NAME", "meddata_hub")
 }
 
 # ================= 生成规模配置 =================

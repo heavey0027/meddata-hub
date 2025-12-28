@@ -2,7 +2,7 @@ import { Patient, MedicalRecord, Doctor, Department, Medicine, PrescriptionDetai
 import { addLog } from './logger';
 
 // 配置后端 API 地址。
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = '/api';
 
 // --- TIME HELPERS ---
 const getTwoDigit = (num: number) => String(num).padStart(2, '0');

@@ -1,12 +1,13 @@
+import os
 import mysql.connector
 from mysql.connector import Error
 
 # 数据库连接配置
-db_config = {
-    'host': 'localhost',        # 数据库地址
-    'user': 'root',    # 数据库用户名
-    'password': 'root',# 数据库密码
-    'database': 'meddata_hub'   # 数据库名称
+DB_CONFIG = {
+    "host": os.getenv("DB_HOST", "localhost"),
+    "user": os.getenv("DB_USER", "root"),
+    "password": os.getenv("DB_PASSWORD", "root"), # 如果你在 docker-compose 里设了 rootpassword，这里默认值无所谓，因为会读环境变量
+    "database": os.getenv("DB_NAME", "meddata_hub")
 }
 
 # 插入数据的 SQL 语句
@@ -68,7 +69,7 @@ clear_sql = "DELETE FROM multimodal_data;"
 def insert_multimodal_data():
     try:
         # 连接到数据库
-        connection = mysql.connector.connect(**db_config)
+        connection = mysql.connector.connect(**DB_CONFIG)
         cursor = connection.cursor()
 
         # 清空表的数据

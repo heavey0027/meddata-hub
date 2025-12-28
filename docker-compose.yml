@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  # 数据库服务
+  db:
+    image: mysql:8.0
+    container_name: meddata-db
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword  
+      MYSQL_DATABASE: meddata_hub
+    volumes:
+      - db_data:/var/lib/mysql
+      # 自动执行初始化 SQL 
+      - ./backend/meddata_hub.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - meddata-net
+
+  # 后端服务
+  backend:
+    build: ./backend
+    container_name: meddata-api
+    depends_on:
+      - db
+    environment:
+      # 注意：DB_HOST 必须写 db 服务名，而不是 localhost
+      DB_HOST: db
+      DB_USER: root
+      DB_PASSWORD: rootpassword
+      DB_NAME: meddata_hub
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY} 
+    networks:
+      - meddata-net
+
+  # 前端服务
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: meddata-ui
+    ports:
+      - "80:80"  # 访问 http://localhost 即可
+    depends_on:
+      - backend
+    networks:
+      - meddata-net
+
+volumes:
+  db_data:
+
+networks:
+  meddata-net:

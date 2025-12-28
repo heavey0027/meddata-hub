@@ -137,7 +137,7 @@ export const MultimodalManager: React.FC = () => {
           return filePath;
       }
       
-      return `http://localhost:5000/api/multimodal/file/${id}?_t=${Date.now()}`;
+      return `api/multimodal/file/${id}?_t=${Date.now()}`;
   };
 
   const renderPreviewContent = (item: MultimodalData) => {

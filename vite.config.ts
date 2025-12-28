@@ -8,6 +8,17 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        // --- 新增代理配置 (Proxy) ---
+        proxy: {
+          '/api': {
+            target: 'http://localhost:5000', // 后端地址 (Docker 暴露端口或本地 python 运行)
+            changeOrigin: true,
+            secure: false,
+            // 如果后端路由本来就带 /api 前缀，则不需要 rewrite
+            // 如果后端是 /login 而非 /api/login，则需取消注释下一行：
+            // rewrite: (path) => path.replace(/^\/api/, ''),
+          }
+        }
       },
       plugins: [react()],
       define: {
