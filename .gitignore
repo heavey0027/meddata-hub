@@ -1,3 +1,6 @@
+# ========================
+# Frontend / Node.js
+# ========================
 # Logs
 logs
 *.log
@@ -7,6 +10,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies & Build
 node_modules
 dist
 dist-ssr
@@ -22,3 +26,45 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# ========================
+# Backend / Python
+# ========================
+# Python compiled files 
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# Flask specific
+instance/
+.webassets-cache
+
+# Distribution / Packaging
+build/
+develop-eggs/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing / Type Checking
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
