@@ -29,7 +29,7 @@
 
 ### 2.1 PATIENTS 表（核心）
 
-摘自 `DATABASE_DESIGN.md` 的设计（结合源码使用情况）：
+摘自 `DATABASE_DESIGN.md` 的设计：
 
 ```text
 PATIENTS {
@@ -234,11 +234,11 @@ def create_patient():
 
    - 若 ID 已存在：
      - 记录警告日志；
-     - 返回：`{"success": False, "message": "患者ID已存在"}`（具体报文在代码中用中文提示）。
+     - 返回：`{"success": False, "message": "患者ID已存在"}`。
 
 3. **插入新患者**
 
-   核心 INSERT（字段顺序参考源码）：
+   核心 INSERT：
 
    ```python
    insert_sql = """
@@ -336,7 +336,6 @@ def update_patient(p_id):
    return jsonify({"success": True, "message": "患者信息更新成功，挂号信息已更新"})
    ```
 
-> 代码中提示“挂号信息已更新”，实际上此函数只更新 `patients` 表，挂号信息的更新如果有需要，应在挂号模块中额外处理。
 
 ### 6.4 错误处理
 
@@ -355,7 +354,6 @@ def delete_patient(patient_id):
     ...
 ```
 
-> `API_DOCUMENTATION.md` 中参数名为 `<p_id>`，实际代码为 `<patient_id>`，路径一致，仅变量名不同。
 
 ### 7.2 业务目标
 
@@ -472,7 +470,7 @@ GROUP BY gender;
 
 ### 9.3 映射逻辑
 
-代码中将数据库中存储的中文性别值映射到英文 key：
+将数据库中存储的中文性别值映射到英文 key：
 
 ```python
 gender_ratio = {"male": 0, "female": 0, "other": 0}

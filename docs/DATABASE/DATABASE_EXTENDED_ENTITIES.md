@@ -39,7 +39,6 @@
 
 ## 1.2 表结构（DDL）
 
-> 以下结构基于当前 SQL 文件与插入脚本（如 `insert_multimodal.py`）的设计。
 
 ```sql
 CREATE TABLE `meddata_hub`.`multimodal_data` (
@@ -103,7 +102,6 @@ ADD CONSTRAINT `fk_multimodal_record`
 - 外键：`fk_multimodal_patient`
 - 约束策略：`ON DELETE SET NULL`
   - 当某个患者记录被删除时，多模态记录仍保留，只是 `patient_id` 置空；
-  - 有利于在脱敏/匿名场景中保留样本数据。
 
 ### （2）与 `medical_records`（病历）
 
@@ -111,10 +109,7 @@ ADD CONSTRAINT `fk_multimodal_record`
 - 外键：`fk_multimodal_record`
 - 约束策略：`ON DELETE SET NULL`
   - 删除病历时不强制删除多模态记录；
-  - 适用于希望保留文件样本用于模型训练或演示的场景。
 
-> 从建模角度看：  
-> `multimodal_data` 是 **“患者 / 病历 ↔ 文件”** 之间的“扩展层/附件层”，属于 **扩展实体**，而非典型的多对多关联桥表。
 
 ---
 
@@ -232,7 +227,7 @@ uploaded_files/
 2. **查看某患者的全部多模态历史**
 
    - 根据 `patient_id` 查询 `multimodal_data`，按 `created_at` 逆序排序；
-   - 可用于：
+   - 用于：
      - 总览某患者所有影像、报告、监测数据；
      - 为多模态 AI 模型准备输入样本。
 
@@ -240,7 +235,7 @@ uploaded_files/
 
    - 用于统计不同模态数据的数量/占比：
      - 例如：image/audio/video/pdf/timeseries 各占比多少；
-   - 可为仪表盘、Sankey 图、流向分析提供数据源。
+   - 为仪表盘、Sankey 图、流向分析提供数据源。
 
 ---
 
@@ -280,18 +275,6 @@ FROM multimodal_data
 GROUP BY source_table;
 ```
 
----
-
-## 1.8 扩展建议
-
-未来如需增强多模态能力，可考虑在 `multimodal_data` 中新增字段：
-
-- `tags`：JSON/文本标签，用于快速搜索（如“脑部 CT”“心电图”“术后随访”等）  
-- `source_system`：区分数据来源系统（PACS / LIS / HIS / 穿戴设备等）  
-- `version`：支持同一 `source_pk` 的多版本文件管理  
-- `checksum`：文件哈希值，用于完整性校验与去重
-
----
 
 # 2. 扩展实体设计总结
 

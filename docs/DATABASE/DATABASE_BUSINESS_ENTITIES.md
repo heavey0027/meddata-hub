@@ -26,7 +26,7 @@
 - “为了什么主诉”（description）  
 - “处于什么状态”（status）
 
-👉 它是 **业务事件表**，不是维度表，也不是关联表。
+
 
 ---
 
@@ -88,9 +88,11 @@ ALTER TABLE `appointments`
   - cancelled（已取消）
 
 **系统使用点：**
-- `/api/appointment/create`：创建挂号
-- `/api/appointment/list`：按患者/医生查询
-- 统计：用于 Sankey 流向（患者 → 科室 → 医生）
+- `POST /api/appointments`：创建挂号记录（患者提交挂号）
+- `GET /api/appointments`：按患者 ID、医生 ID、科室、日期等条件查询挂号列表
+- `GET /api/appointments/statistics`：按年 / 月 / 日维度统计挂号数量
+- `GET /api/stats/sankey`：基于挂号记录和就诊记录，生成「患者 → 科室 → 医生」的桑基流向数据
+
 
 ---
 
@@ -108,7 +110,7 @@ ALTER TABLE `appointments`
 - 治疗方案  
 - 就诊日期  
 
-👉 它是“就诊行为本身”的业务实体。
+
 
 ---
 
@@ -180,7 +182,6 @@ patients ─────────→ appointments ─────────
 - 患者首先进行挂号（appointments）
 - 医生根据挂号进行诊疗并形成病历（medical_records）
 
-两者都是 **表示独立业务事件的实体**，不存在 M:N 或 R:N 的结构，因此归类为“业务实体”。
 
 ---
 

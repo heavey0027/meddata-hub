@@ -47,7 +47,7 @@ insert_data_python/meddata_hub.sql
 | `MEDICAL_RECORDS` | 病历主表 |
 | `PRESCRIPTION_DETAILS` | 处方明细 |
 | `MULTIMODAL_DATA` | 多模态文件索引数据 |
-| `STAT_FLOW`（若存在） | 桑基图或统计数据相关表 |
+| `STAT_FLOW` | 桑基图或统计数据相关表 |
 
 ### **使用方式**
 
@@ -57,14 +57,7 @@ insert_data_python/meddata_hub.sql
 mysql -u root -p < meddata_hub.sql
 ```
 
-确保：
 
-- 数据库 `meddata_hub` 创建成功  
-- 所有表结构正确无误  
-- 字段类型与后端 API 的读写逻辑一致  
-
-> ⚠️ **重要提醒**  
-> 生产环境请勿直接使用大量模拟脚本插入虚假数据，只需执行 SQL 建表文件即可。
 
 ---
 
@@ -90,11 +83,6 @@ insert_data_python/insert_data.py
 | 处方（PRESCRIPTION_DETAILS） | ✔ | 随机药品及数量 |
 | 随机日期 | ✔ | 分布于模拟年份内，用于统计模块 |
 
-### **适用场景**
-
-- 统计图表、Sankey 流向图等需要较真实的数据分布  
-- 用于本地开发测试  
-- 用于演示 demo
 
 ### **执行方式**
 
@@ -102,7 +90,6 @@ insert_data_python/insert_data.py
 python insert_data_python/insert_data.py
 ```
 
-> 该脚本插入数据量大（根据设置可能上万条），不建议在生产库运行。
 
 ---
 
@@ -117,10 +104,6 @@ insert_data_python/insert_small_data.py
 ### **功能概述**
 
 - 类似 `insert_data.py`，但**数据体量较小**，通常几十条到几百条。
-- 更适合：
-  - 本地无数据时快速初始化
-  - 单元测试环境
-  - 演示环境（避免数据过于庞大）
 
 ### **执行方式**
 
@@ -128,13 +111,6 @@ insert_data_python/insert_small_data.py
 python insert_data_python/insert_small_data.py
 ```
 
-### **推荐使用时机**
-
-| 环境 | 推荐脚本 |
-|------|----------|
-| 开发环境 | `insert_small_data.py` |
-| 测试环境 | 自定义 SQL 或 small 数据 |
-| 生产环境 | 🚫 禁止运行任何模拟随机数据脚本 |
 
 ---
 
@@ -178,11 +154,7 @@ MULTIMODAL_DATA
 | `patient_id` | 脚本可能按规则分配（如随机或按文件名推断） |
 | `record_id` | 若存在病历关联，将绑定对应病历 |
 | `description` | 根据文件名自动生成或留空 |
-
-### **适用场景**
-
-- 用于演示系统的多模态展示能力  
-- 用于测试前端预览（CT 图像、录音、手术视频等）  
+  
 
 ### **执行方式**
 
@@ -190,7 +162,6 @@ MULTIMODAL_DATA
 python insert_data_python/insert_multimodal.py
 ```
 
-> 需要保证上传目录结构完整，否则脚本可能因找不到文件而跳过插入。
 
 ---
 
@@ -205,10 +176,6 @@ insert_data_python/insert_sankey.py
 ### **功能**
 
 - 为 `/api/stats/sankey` 提供示例性流向数据
-- 根据业务场景可能模拟：
-  - 患者 → 科室 → 诊断 → 治疗流程
-  - 科室之间的转诊流程
-  - 用药路径分析
 
 ### **关联模块**
 
@@ -222,9 +189,9 @@ python insert_data_python/insert_sankey.py
 
 ---
 
-# **8. 初始化推荐顺序**
+# **8. 初始化顺序**
 
-系统初始化推荐按以下顺序执行脚本：
+系统初始化按以下顺序执行脚本：
 
 ### **（1）建表**
 
@@ -238,7 +205,7 @@ mysql < meddata_hub.sql
 
 | 脚本 | 用途 |
 |------|------|
-| `insert_small_data.py` | 快速构建小型数据集（推荐） |
+| `insert_small_data.py` | 快速构建小型数据集 |
 | `insert_data.py` | 构建大型模拟数据集 |
 
 ### **（3）插入多模态数据**
@@ -247,13 +214,6 @@ mysql < meddata_hub.sql
 python insert_multimodal.py
 ```
 
-确保：
-
-```
-uploaded_files/medicaldata/...
-```
-
-目录已存在。
 
 ### **（4）插入统计图示数据**
 

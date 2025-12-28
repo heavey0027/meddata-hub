@@ -70,9 +70,9 @@ pool = mysql.connector.pooling.MySQLConnectionPool(**db_config)
 | 参数 | 含义 |
 |------|------|
 | `pool_name` | 连接池名称 |
-| `pool_size` | 最大连接数（根据并发量可调整） |
+| `pool_size` | 最大连接数 |
 | `autocommit=False` | 所有写操作必须显式 commit 才会生效（保证事务一致性） |
-| `user/password` | 数据库账户（建议生产环境使用环境变量） |
+| `user/password` | 数据库账户 |
 | `database` | 默认数据库名：`meddata_hub` |
 
 ---
@@ -126,9 +126,6 @@ finally:
     conn.close()  # 必须关闭，否则连接不会回到连接池
 ```
 
-### **注意：不关闭连接会导致连接池耗尽！**
-
-在高并发时尤其重要。
 
 ---
 
@@ -237,11 +234,6 @@ def format_date(d):
     return str(d) if d else None
 ```
 
-未来可扩展：
-
-- 转换 MySQL 日期/时间到统一格式
-- 将 snake_case 转换为 camelCase（如需要适配前端）
-- 处理 None 值
 
 ---
 
@@ -264,36 +256,8 @@ app/__init__.py → before_request → check_timestamp()
 
 因此 utils 是整个后端的基础设施层（Infrastructure Layer）。
 
----
 
-# **5. 未来扩展建议**
-
-### **5.1 db.py 可扩展内容**
-
-1. **从环境变量读取 DB 配置**  
-   避免账号密码写死在代码里：
-
-```
-os.getenv("DB_USER")
-os.getenv("DB_PASS")
-```
-
-2. **增加数据库健康检查接口（可选）**
-
-3. **统一异常包装**  
-   返回内部错误码而不是裸 MySQL 错误。
-
----
-
-### **5.2 common.py 可扩展内容**
-
-1. **统一的 API 响应构造器**
-2. **日志追踪 ID（request_id）**
-3. **签名机制（HMAC）用于进一步抵御中间人攻击**
-
----
-
-# **6. 文档总结**
+# **5. 文档总结**
 
 本文件描述了 utils 层在后端中的所有核心功能：
 
@@ -302,6 +266,6 @@ os.getenv("DB_PASS")
 | db.py | 构建并管理 MySQL 连接池，所有数据库操作的基础 |
 | common.py | 通用工具函数；所有 API 的全局请求校验（时间戳） |
 
-业务层（API 模块）全部构建在 utils 层之上，因此理解 utils 对维护后端系统非常重要。
+
 
 ---

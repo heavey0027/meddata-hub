@@ -9,7 +9,7 @@
 
 | 文件路径 | 作用 |
 |---------|------|
-| `run.py` | 项目启动入口（开发环境使用） |
+| `run.py` | 项目启动入口 |
 | `backend/app/__init__.py` | 应用工厂函数、日志初始化、蓝图注册、全局钩子等全部入口逻辑 |
 
 整个后端的所有 API 都通过 `create_app()` 注册并生效。
@@ -24,7 +24,7 @@
 backend/run.py
 ```
 
-核心内容如下（已基于最新文件内容确认）：
+核心内容如下：
 
 ```python
 from app import create_app
@@ -43,11 +43,6 @@ if __name__ == "__main__":
 | 启动开发服务器 | Flask 内置服务器（仅 dev 用） |
 | 监听端口 | 默认 `0.0.0.0:5000` |
 
-在生产环境中应使用 gunicorn 或 uwsgi，例如：
-
-```
-gunicorn -w 4 -b 0.0.0.0:5000 "app:create_app()"
-```
 
 ---
 
@@ -64,7 +59,7 @@ gunicorn -w 4 -b 0.0.0.0:5000 "app:create_app()"
 
 ## **3.1 create_app() — 系统初始化流程**
 
-源码结构如下（保持与你最新文件一致）：
+源码结构如下：
 
 ```python
 def create_app():
@@ -162,7 +157,7 @@ backend/app/__init__.py
 - 防止重复添加 handler（Flask reload 时避免重复输出）
 - 创建 StreamHandler 输出日志到控制台
 
-代码结构如下（保持原样）：
+代码结构如下：
 
 ```python
 def setup_logging():
@@ -183,11 +178,6 @@ def setup_logging():
 |------|------|
 | 简洁、安全（避免重复 handler） | 无文件日志、无区分 API 访问日志、无结构化日志 |
 
-如需生产环境，可扩展：
-
-- 文件日志
-- RotatingFileHandler
-- JSON 格式日志
 
 ---
 
@@ -258,6 +248,5 @@ API 蓝图依赖：
 | before_request | 全局请求拦截逻辑 |
 | index | 健康检查 |
 
-系统结构清晰、可扩展性高。
 
 ---
