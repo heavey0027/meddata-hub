@@ -171,12 +171,28 @@ def create_record():
             # 如果请求的药在数据库中不存在或库存为0，则报错
             cursor.execute("SELECT stock FROM medicines WHERE id = %s", (detail['medicineId'],))
             res = cursor.fetchone()
+
             if not res:
                 logger.error("Medicine ID %s does not exist.", detail['medicineId'])
                 raise Exception(f"药品ID {detail['medicineId']} 不存在")
-            elif res[0] <= 0:  # 使用元组索引访问
+
+            # 计算扣除的库存数量
+            stock = res[0]
+            days = detail.get('days')
+            if stock <= 0:
                 logger.warning("Medicine ID %s has insufficient stock.", detail['medicineId'])
                 raise Exception(f"药品ID {detail['medicineId']} 库存不足")
+
+            # 简化为按天数扣除
+            if stock < days:
+                logger.warning("Not enough stock for Medicine ID %s, available stock: %d, requested days: %d",
+                               detail['medicineId'], stock, days)
+                raise Exception(f"药品ID {detail['medicineId']} 库存不足，无法满足 {days} 天的需求")
+
+            # 更新库存：扣除天数数量
+            new_stock = stock - days
+            cursor.execute("UPDATE medicines SET stock = %s WHERE id = %s", (new_stock, detail['medicineId']))
+            logger.info("Stock updated for Medicine ID %s. New stock: %d", detail['medicineId'], new_stock)
 
             cursor.execute(sql_detail, (
                 detail.get('id'),
