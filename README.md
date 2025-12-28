@@ -13,10 +13,11 @@
   <img src="https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white" />
   <img src="https://img.shields.io/badge/Flask-2.x-000000?logo=flask&logoColor=white" />
   <img src="https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white" />
+  <img src="https://img.shields.io/badge/Docker-Enabled-2496ED?logo=docker&logoColor=white" />
   <img src="https://img.shields.io/badge/License-MIT-green" />
 </p>
 
-**MedData Hub** 是一个模拟现代化数字医院全流程的综合管理平台。项目采用前后端分离架构，集成了挂号分诊、电子病历、药房库存管理以及基于大模型的 AI 辅助诊断功能。
+**MedData Hub** 是一个模拟现代化数字医院全流程的综合管理平台。项目采用前后端分离架构，集成了挂号分诊、电子病历、药房库存管理以及基于大模型的 AI 辅助诊断功能，并支持**全栈 Docker 容器化部署**。
 
 ---
 
@@ -36,6 +37,10 @@
     *   **事务脚本模式**: 确保病历写入与库存扣减的原子性。
     *   **高级 SQL 查询**: 实现相关子查询统计、双重 `NOT EXISTS` 筛选 VIP 患者等复杂逻辑。
 *   **RESTful API**: 清晰的接口定义，屏蔽底层复杂的数据库表结构。
+
+### 部署与运维 (Deployment)
+*   **Docker 容器化**: 提供完整的 `docker-compose` 配置，一键拉起 Frontend (Nginx), Backend (Gunicorn), Database (MySQL)。
+*   **环境适配**: 支持本地开发与容器化部署无缝切换，内置 Nginx 反向代理解决跨域问题。
 
 ---
 
@@ -70,48 +75,64 @@
 
 ## 快速开始 (Getting Started)
 
-### 1. 环境准备
+### 方式一：Docker 一键部署 (推荐) 
+
+无需安装 Python/Node/MySQL 环境，只需安装 Docker Desktop。
+
+#### 1. 启动服务
+在项目根目录下运行：
+```bash
+docker compose up -d
+```
+
+#### 2. 初始化数据
+首次启动后，需手动插入演示数据（医生、患者、药品、统计数据等）：
+```bash
+# 插入基础业务数据
+docker exec -it meddata-api python insert_data_python/insert_data.py
+
+# 插入多模态统计数据
+docker exec -it meddata-api python insert_data_python/insert_multimodal.py
+```
+
+#### 3. 访问应用
+浏览器访问：`http://localhost`
+
+*   **管理员**: `admin` / `admin123`
+*   **医生**: `DOC001` / `123456`
+*   **患者**: `P0001` / `123456`
+
+---
+
+### 方式二：本地开发模式 (Manual Setup) 
+
+适用于需要修改代码的开发场景。
+
+#### 1. 环境准备
 *   Node.js (v18+) & Yarn
 *   Python (3.8+)
 *   MySQL (8.0+)
 
-### 2. 克隆项目
-```bash
-git clone https://github.com/heavey0027/meddata-hub.git
-cd meddata-hub
-```
-
-### 3. 后端启动 (Backend)
-确保 MySQL 服务已启动并创建好对应数据库。
+#### 2. 后端启动 (Backend)
+确保本地 MySQL 服务已启动，并创建好 `meddata_hub` 数据库。
 
 ```bash
-# 进入后端目录
 cd backend
-
-# 安装依赖
 pip install -r requirements.txt
 
-# 配置数据库连接 (编辑 app/utils/db.py 或环境变量)
-# ...
-
-# 启动服务
+# 启动 Flask 服务 (默认端口 5000)
 python run.py
 ```
-*后端服务默认运行在 `http://localhost:5000`*
 
-### 4. 前端启动 (Frontend)
+#### 3. 前端启动 (Frontend)
+项目已配置 Vite Proxy，自动转发 `/api` 请求至本地后端。
 
 ```bash
-# 回到项目根目录
-cd ..
-
-# 安装依赖
-yarn
-
-# 启动开发服务器
+cd .. # 回到根目录
+yarn 
 yarn dev
 ```
-*访问 `http://localhost:3000` 即可体验。*
+访问 `http://localhost:3000` 进行开发调试。
 
 ---
 
@@ -119,7 +140,7 @@ yarn dev
 
 ### Frontend
 *   **Core**: React 19, TypeScript
-*   **Build**: Vite
+*   **Build**: Vite (configured with Proxy)
 *   **Style**: Tailwind CSS, Lucide React
 *   **State**: React Hooks, Context API
 *   **AI**: Google GenAI SDK
@@ -129,6 +150,11 @@ yarn dev
 *   **Database**: MySQL (mysql-connector-python)
 *   **Patterns**: Transaction Script, Singleton (DB Pool), Facade
 *   **Utilities**: Flask-CORS, Python Logging
+
+### DevOps
+*   **Container**: Docker, Docker Compose
+*   **Proxy**: Nginx (Reverse Proxy)
+*   **Server**: Gunicorn (WSGI HTTP Server)
 
 ---
 
