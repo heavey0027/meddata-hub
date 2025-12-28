@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Bot, User, Database, Sparkles, Settings, ChevronDown, ChevronUp, Save, Server } from 'lucide-react';
 import { chatWithAI, DEFAULT_CONFIGS } from '../services/aiService';
-import { getPatients, getRecords, getDoctors, getMedicines, getDepartments } from '../services/mockDb';
+import { getPatients, getRecords, getDoctors, getMedicines, getDepartments } from '../services/apiService';
 import { getCurrentUser } from '../services/authService';
 import { addLog } from '../services/logger';
 import { AIConfig, AIProvider } from '../types';

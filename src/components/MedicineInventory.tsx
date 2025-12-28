@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { getMedicines, deleteMedicine, updateMedicine, getMedicineById } from '../services/mockDb';
+import { getMedicines, deleteMedicine, updateMedicine, getMedicineById } from '../services/apiService';
 import { Medicine } from '../types';
 import { AlertTriangle, Pill, Search, Trash2, Edit2, Save, X } from 'lucide-react';
 import { getCurrentUser } from '../services/authService';

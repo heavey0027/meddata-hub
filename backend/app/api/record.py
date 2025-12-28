@@ -174,7 +174,7 @@ def create_record():
             if not res:
                 logger.error("Medicine ID %s does not exist.", detail['medicineId'])
                 raise Exception(f"药品ID {detail['medicineId']} 不存在")
-            elif res['stock'] <= 0:
+            elif res[0] <= 0:  # 使用元组索引访问
                 logger.warning("Medicine ID %s has insufficient stock.", detail['medicineId'])
                 raise Exception(f"药品ID {detail['medicineId']} 库存不足")
 

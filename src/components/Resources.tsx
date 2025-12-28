@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { getDepartments, deleteDepartment } from '../services/mockDb';
+import { getDepartments, deleteDepartment } from '../services/apiService';
 import { getCurrentUser } from '../services/authService';
 import { Department } from '../types';
 import { Building2, Stethoscope, Pill, Trash2 } from 'lucide-react';

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { getDepartments, getDoctors, createAppointment, findPatientByQuery } from '../services/mockDb';
+import { getDepartments, getDoctors, createAppointment, findPatientByQuery } from '../services/apiService';
 import { getCurrentUser } from '../services/authService';
 import { Department, Doctor, Appointment } from '../types';
 import { UserPlus, Calendar, Stethoscope, Building2, CheckCircle, FileText, Lock } from 'lucide-react';

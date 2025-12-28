@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { getDoctors, getDepartments, deleteDoctor, updateDoctor, getDoctorById } from '../services/mockDb';
+import { getDoctors, getDepartments, deleteDoctor, updateDoctor, getDoctorById } from '../services/apiService';
 import { Doctor, Department } from '../types';
 import { Stethoscope, Filter, X, User, Trash2, Edit2, Save } from 'lucide-react';
 import { getCurrentUser } from '../services/authService';

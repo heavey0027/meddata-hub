@@ -50,7 +50,7 @@
 | `getTodayStr` | 工具函数：格式化当前日期，用于默认筛选和记录。 |
 
 ### 数据流
-1.  **输入**：`mockDb.getAppointments` 获取挂号单 -> 状态分流至 `myQueue` 或 `deptQueue`。
+1.  **输入**：`apiService.getAppointments` 获取挂号单 -> 状态分流至 `myQueue` 或 `deptQueue`。
 2.  **交互**：医生填写诊断及处方 -> 更新本地 State (`diagnosis`, `prescriptionBuffer`)。
 3.  **输出**：提交操作 -> 调用 `saveMedicalRecord` 与 `updateAppointmentStatus` -> `logger.addLog` 记录。
 
@@ -125,6 +125,6 @@
 3.  **删除**：用户注销 -> `deletePatient` -> `logout` 清理。
 
 ### 依赖
-*   **数据层**: `mockDb` (find/update/delete 接口)。
+*   **数据层**: `apiService` (find/update/delete 接口)。
 *   **认证层**: `authService` (角色判断、会话清理)。
 *   **UI支持**: `react-dom` (createPortal 用于顶层模态框), `lucide-react` (图标)。

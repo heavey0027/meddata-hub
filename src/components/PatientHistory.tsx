@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { findPatientByQuery, getFullPatientDetails, getPatients, updatePatient, deletePatient } from '../services/mockDb';
+import { findPatientByQuery, getFullPatientDetails, getPatients, updatePatient, deletePatient } from '../services/apiService';
 import { getCurrentUser, logout } from '../services/authService';
 import { Patient } from '../types';
 import { Search, Clock, User, Calendar, Pill, AlertCircle, ChevronDown, ChevronUp, Edit2, UserX } from 'lucide-react';

@@ -3,7 +3,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
   AreaChart, Area, Sankey, Tooltip, Layer, Rectangle, LineChart, Line
 } from 'recharts';
-import { getPatientDemographics, getAppointmentStatistics, getLocalDate, getSankeyData, getMonthlyStatistics } from '../services/mockDb';
+import { getPatientDemographics, getAppointmentStatistics, getLocalDate, getSankeyData, getMonthlyStatistics } from '../services/apiService';
 import { PatientDemographics, MonthlyStats } from '../types';
 import { Users, Activity, ArrowUpRight, ArrowDownRight, Clock, Filter, GitMerge, TrendingUp, CalendarDays } from 'lucide-react';
 

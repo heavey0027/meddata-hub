@@ -1,80 +1,53 @@
 
-import { UserRole, UserSession, Patient, Doctor } from '../types';
-import { getPatients, getDoctors, createPatient, loginUser } from './mockDb';
+import { UserRole, UserSession, Patient } from '../types';
+import { createPatient, loginUser } from './apiService';
 import { addLog } from './logger';
 
 const SESSION_KEY = 'meddata_user_session';
 const DEBUG_KEY = 'meddata_debug_mode';
 
-// Helper: Get users by role (Mock Fallback)
-const findUserMock = async (role: UserRole, id: string): Promise<Patient | Doctor | null> => {
-  if (role === 'patient') {
-    const patients = await getPatients();
-    return patients.find(p => p.id === id) || null;
-  } else if (role === 'doctor') {
-    const doctors = await getDoctors();
-    return doctors.find(d => d.id === id) || null;
-  }
-  return null;
-};
-
+// 用户登录 
 export const login = async (role: UserRole, id: string, password?: string): Promise<UserSession> => {
-  // 1. Try Backend API First
   try {
+      // 直接调用后端 API
       const apiResponse = await loginUser(role, id, password || '');
+      
       const session: UserSession = {
           id: apiResponse.user.id,
           name: apiResponse.user.name,
           role: apiResponse.user.role,
-          token: apiResponse.token
+          token: apiResponse.token // 如果后端返回 JWT token，可以在此保存
       };
+      
+      // 持久化会话
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      
+      addLog('SUCCESS', 'AUTH', '登录成功', `User: ${session.name} (${session.id})`);
       return session;
   } catch (error: any) {
-      if (error.message === '用户名或密码错误' || error.message.includes('错误')) {
-          throw error;
-      }
-      console.warn("Backend Login Failed/Offline, falling back to Mock Data validation.");
+      addLog('ERROR', 'AUTH', '登录失败', error.message || '未知错误');
+      // 直接抛出后端返回的错误信息给 UI 层展示
+      throw error;
   }
-
-  // 2. Mock Fallback Logic
-  if (role === 'admin') {
-    if (id === 'admin' && password === 'admin123') {
-      const session: UserSession = { id: 'admin', name: '系统管理员', role: 'admin' };
-      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-      addLog('SUCCESS', 'AUTH', '管理员登录成功 (Mock)', 'Session Started');
-      return session;
-    }
-    throw new Error('管理员账号或密码错误 (默认 admin/admin123)');
-  }
-
-  const user = await findUserMock(role, id);
-  if (!user) throw new Error('用户不存在，请检查ID');
-
-  const storedPass = (user as any).password || 'password'; 
-  if (password !== storedPass) throw new Error('密码错误');
-
-  const session: UserSession = { id: user.id, name: user.name, role: role };
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  addLog('SUCCESS', 'AUTH', `${role === 'doctor' ? '医生' : '患者'}登录成功 (Mock)`, `User: ${user.name} (${user.id})`);
-  return session;
 };
 
+/**
+ * 患者注册
+ * 移除客户端查重逻辑，依赖后端数据库唯一性约束
+ */
 export const registerPatient = async (patient: Partial<Patient> & { password?: string }): Promise<Patient> => {
   if (!patient.name || !patient.phone || !patient.password) {
     throw new Error('请填写完整注册信息');
   }
 
-  const patients = await getPatients();
-  if (patients.some(p => p.phone === patient.phone)) {
-    throw new Error('该手机号已被注册');
-  }
-
+  // 生成 ID (如果后端不自动生成 ID，前端在此生成。通常建议后端生成，此处保留是为了兼容旧逻辑)
+  // 注意：不再调用 getPatients() 进行客户端查重，重复检测交由后端 API 返回 409 错误处理
   const newId = `P${Date.now().toString().slice(-4)}`;
+  
   const newPatient: Patient = {
     id: newId,
     name: patient.name!,
-    password: patient.password,
+    password: patient.password, // 实际生产中密码不应明文存储在对象中，这里仅构建请求体
     gender: patient.gender || '男',
     age: patient.age || 18,
     phone: patient.phone!,
@@ -82,11 +55,16 @@ export const registerPatient = async (patient: Partial<Patient> & { password?: s
     createTime: new Date().toISOString().split('T')[0]
   };
 
-  // Use the new createPatient method to ensure POST /api/patients
-  await createPatient(newPatient);
-  
-  addLog('SUCCESS', 'AUTH', '患者注册成功', `New Patient: ${newPatient.name} (${newId})`);
-  return newPatient;
+  try {
+    // 调用 API 创建患者
+    await createPatient(newPatient);
+    
+    addLog('SUCCESS', 'AUTH', '患者注册成功', `New Patient: ${newPatient.name} (${newId})`);
+    return newPatient;
+  } catch (error: any) {
+    addLog('ERROR', 'AUTH', '注册失败', error.message);
+    throw error;
+  }
 };
 
 export const logout = () => {

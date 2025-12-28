@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { getMultimodalData, createMultimodalData, deleteMultimodalData } from '../services/mockDb';
+import { getMultimodalData, createMultimodalData, deleteMultimodalData } from '../services/apiService';
 import { MultimodalData, ModalityType } from '../types';
 import { 
   FileImage, FileAudio, FileVideo, FileText, File, Activity, 

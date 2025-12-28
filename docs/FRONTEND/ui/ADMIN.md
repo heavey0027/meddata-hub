@@ -62,12 +62,12 @@
 | `StatCard` | 子组件，负责渲染单个 KPI 指标卡片。 |
 
 ### 数据流
-1.  **获取**：`mockDb.getStats()` → 组件 State (`stats`)。
+1.  **获取**：`apiService.getStats()` → 组件 State (`stats`)。
 2.  **展示**：根据 `activeTab` 选择性渲染 `recharts` 图表或列表组件。
 3.  **导航**：用户点击“查看更多” → 触发 `handleViewMore` → `useNavigate` 执行跳转。
 
 ### 依赖
-*   **Data**: `mockDb` (getStats)
+*   **Data**: `apiService` (getStats)
 *   **Routing**: `react-router-dom` (useNavigate)
 *   **Icons**: `lucide-react`
 *   **Charts**: `recharts` (BarChart, PieChart)
@@ -110,7 +110,7 @@
 
 ### 依赖
 *   **Charts**: `recharts` (LineChart, AreaChart, Sankey, PieChart, BarChart)
-*   **Data**: `mockDb` (多维度统计接口)
+*   **Data**: `apiService` (多维度统计接口)
 
 ---
 
@@ -142,7 +142,7 @@
 
 ### 数据流
 1.  **初始化**：路由 State → `activeTab`。
-2.  **读取**：`mockDb.getDepartments` → 科室表格 UI。
+2.  **读取**：`apiService.getDepartments` → 科室表格 UI。
 3.  **权限**：`authService.getCurrentUser` → 控制删除按钮显隐。
 4.  **写入**：用户删除科室 → API 调用 → 状态更新。
 

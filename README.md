@@ -18,14 +18,12 @@
 
 **MedData Hub** 是一个模拟现代化数字医院全流程的综合管理平台。项目采用前后端分离架构，集成了挂号分诊、电子病历、药房库存管理以及基于大模型的 AI 辅助诊断功能。
 
-本项目采用 **"Hybrid Data Layer"（混合数据层）** 设计：前端支持连接真实的 Python 后端 API，亦可在无后端环境下通过本地 Mock 引擎全功能运行，实现演示环境 100% 可用。
-
 ---
 
 ## 核心特性 (Key Features)
 
 ### 前端交互 (Frontend)
-*   **混合架构**: “API 优先，Mock 兜底”策略，确保演示稳定性。
+*   **现代化架构**: 采用 React 19 + TypeScript 构建，利用客户端聚合模式优化数据交互。
 *   **严格权限控制 (RBAC)**: 患者/医生/管理员三级权限体系，视图与操作完全隔离。
 *   **AI 智能集成**:
     *   **影像诊断**: 集成多模态模型，支持 X 光/CT 片 AI 分析。
@@ -46,12 +44,12 @@
 本项目包含详尽的全栈架构与逻辑说明文档。
 
 ### 系统架构
-*   **[前端架构设计](./docs/FRONTEND/FRONTEND_ARCHITECTURE.md)**: 技术选型、混合数据层模式及核心依赖。
+*   **[前端架构设计](./docs/FRONTEND/FRONTEND_ARCHITECTURE.md)**: 技术选型、系统设计模式及核心依赖。
 *   **[后端架构设计](./docs/BACKEND/BACKEND_ARCHITECTURE.md)**: 蓝图设计、应用工厂模式及核心设计模式说明。
 *   **[API 接口文档](./docs/BACKEND/API_DOCUMENTATION.md)**: 包含认证、挂号、病历、统计等全量接口说明。
 
 ### 逻辑与组件
-*   **[前端核心逻辑](./docs/FRONTEND/SERVICES_LOGIC.md)**: Mock 引擎、Auth 流程及 AI 适配器。
+*   **[前端核心逻辑](./docs/FRONTEND/SERVICES_LOGIC.md)**: 核心服务层、Auth 流程及 AI 适配器。
 *   **UI 组件手册**:
     *   [核心基础 (Core)](./docs/FRONTEND/ui/CORE.md) | [临床业务 (Clinical)](./docs/FRONTEND/ui/CLINICAL.md)
     *   [患者服务 (Patient)](./docs/FRONTEND/ui/PATIENT.md) | [后台管理 (Admin)](./docs/FRONTEND/ui/ADMIN.md)
@@ -114,20 +112,6 @@ yarn
 yarn dev
 ```
 *访问 `http://localhost:3000` 即可体验。*
-
-> **提示**: 如果未启动后端，前端会自动检测并切换至 **Mock 模式**，您依然可以体验所有功能。
-
----
-
-## 测试账号 (Demo Credentials)
-
-系统内置 Mock 数据与后端种子数据保持一致：
-
-| 角色 | 用户名 / ID | 密码 | 权限描述 |
-| :--- | :--- | :--- | :--- |
-| **管理员** | `admin` | `admin123` | 全局管理、数据大屏、日志监控、资源管理 |
-| **医生** | `DOC01` | `password` | 接诊台、查看队列、开具处方、病历查询 |
-| **患者** | `P001` | `password` | 自助挂号、查看个人病历、AI 问答 |
 
 ---
 

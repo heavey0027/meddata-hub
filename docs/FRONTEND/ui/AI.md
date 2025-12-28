@@ -26,7 +26,7 @@
     *   通过 `useEffect` 调用 `authService.getCurrentUser()` 获取当前登录用户。
     *   加载特定角色的问候语（例如：为患者提供就医指南，为医生提供临床辅助）。
 2.  **上下文构建 (Context Injection)**
-    *   在发送消息前，根据用户角色从 `mockDb` 获取相关联的数据。
+    *   在发送消息前，根据用户角色从 `apiService` 获取相关联的数据。
     *   医生与管理员请求会包含更广泛的数据上下文；患者请求则侧重于个人信息和通用科室信息。
 3.  **配置持久化**
     *   AI 配置信息存储在 `localStorage` 中。组件加载时自动恢复，修改时同步写入。
@@ -45,12 +45,12 @@
 
 ### 数据流
 1.  **输入**：用户输入文本消息 (userMsg)。
-2.  **加工**：handleSend 根据角色获取 mockDb 数据，组装成系统上下文提示词。
+2.  **加工**：handleSend 根据角色获取 apiService 数据，组装成系统上下文提示词。
 3.  **请求**：调用 aiService.chatWithAI。
 4.  **展示**：AI 响应返回后，更新 messages 状态数组，触发 UI 渲染。
 
 ### 依赖
-*   **Service**: aiService (逻辑核心), authService (角色获取), mockDb (上下文数据)。
+*   **Service**: aiService (逻辑核心), authService (角色获取), apiService (上下文数据)。
 *   **Utility**: logger (记录配置变更), lucide-react (界面图标)。
 
 ---

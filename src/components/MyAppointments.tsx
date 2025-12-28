@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { getAppointments, updateAppointmentStatus } from '../services/mockDb';
+import { getAppointments, updateAppointmentStatus } from '../services/apiService';
 import { getCurrentUser } from '../services/authService';
 import { Appointment } from '../types';
 import { Calendar, Clock, CheckCircle, Ban } from 'lucide-react';

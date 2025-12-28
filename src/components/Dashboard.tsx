@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell 
 } from 'recharts';
-import { getStats } from '../services/mockDb';
+import { getStats } from '../services/apiService';
 import { DashboardStats } from '../types';
 import { Users, FileText, BriefcaseMedical, Pill, Activity, AlertTriangle, Stethoscope, Building2 } from 'lucide-react';
 

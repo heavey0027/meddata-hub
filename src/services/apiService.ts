@@ -24,7 +24,7 @@ export const invalidateCache = (keyPattern: string) => {
   // No-op
 };
 
-// --- API Helpers (Direct Fetch, No Mock Fallback) ---
+// --- API Helpers ---
 
 async function fetchFromApi<T>(endpoint: string): Promise<T> {
   // Use timestamp to prevent browser 304 caching
@@ -61,7 +61,7 @@ async function fetchFromApi<T>(endpoint: string): Promise<T> {
     addLog('ERROR', 'API_FAIL', 'API 请求失败', `Endpoint: ${endpoint}`, {
       error: errorMsg
     });
-    throw error; // 直接抛出错误，不再使用 Mock 数据兜底
+    throw error; 
   }
 };
 

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FileImage, MessageSquareText, Menu, X, Database, Layers, PieChart as PieChartIcon, ScrollText, CalendarPlus, History, UserCheck, LogOut, Clock, ChevronLeft, ChevronRight, Calendar, DatabaseZap } from 'lucide-react';
+import { LayoutDashboard, Users, FileImage, MessageSquareText, Menu, X, Database, Layers, PieChart as PieChartIcon, ScrollText, CalendarPlus, History, UserCheck, LogOut, Clock, Calendar, DatabaseZap } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { PatientList } from './components/PatientList';
 import { RadiologyAI } from './components/RadiologyAI';
@@ -15,7 +15,7 @@ import { DoctorConsultation } from './components/DoctorConsultation';
 import { MyAppointments } from './components/MyAppointments';
 import { MultimodalManager } from './components/MultimodalManager';
 import { Login } from './components/Login';
-import { checkBackendHealth } from './services/mockDb';
+import { checkBackendHealth } from './services/apiService';
 import { addLog } from './services/logger';
 import { getCurrentUser, logout, isDebugMode } from './services/authService';
 import { UserRole } from './types';
@@ -68,15 +68,24 @@ const SystemClock = () => {
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDesktopSidebarOpen, setIsDesktopSidebarOpen] = useState(true);
-  const [dbStatus, setDbStatus] = useState<'checking' | 'connected' | 'mock'>('checking');
+  
+  // 修改：移除 'mock' 状态，严格区分连接成功与错误
+  const [dbStatus, setDbStatus] = useState<'checking' | 'connected' | 'error'>('checking');
+  
   const user = getCurrentUser();
   const debug = isDebugMode();
   const location = useLocation();
 
   useEffect(() => {
     checkBackendHealth().then(isConnected => {
-      setDbStatus(isConnected ? 'connected' : 'mock');
-      if (isConnected) addLog('SUCCESS', '系统', '后端连接成功');
+      // 修改：不再回退到 mock，连接失败即为 error
+      setDbStatus(isConnected ? 'connected' : 'error');
+      
+      if (isConnected) {
+        addLog('SUCCESS', '系统', '后端连接成功');
+      } else {
+        addLog('ERROR', '系统', '后端连接失败', '无法连接到 API 服务器');
+      }
     });
   }, []);
 
@@ -207,8 +216,10 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
              <SystemClock />
              <div className="h-6 w-px bg-gray-200 mx-2 hidden sm:block"></div>
              <div className="flex items-center gap-2">
-                <span className={`h-2.5 w-2.5 rounded-full ${dbStatus === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-orange-500'}`}></span>
-                <span className="text-xs text-gray-500 font-medium">{dbStatus === 'connected' ? 'DB Connected' : 'Mock Mode'}</span>
+                <span className={`h-2.5 w-2.5 rounded-full ${dbStatus === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
+                <span className={`text-xs font-medium ${dbStatus === 'connected' ? 'text-green-600' : 'text-red-600'}`}>
+                    {dbStatus === 'connected' ? 'API Online' : 'Connection Error'}
+                </span>
              </div>
           </div>
         </header>

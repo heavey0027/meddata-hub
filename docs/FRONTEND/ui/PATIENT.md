@@ -46,11 +46,11 @@
 ### 数据流
 1.  **数据采集**：用户输入病情或从下拉菜单选择科室/医生。
 2.  **实体构建**：在 `handleSubmit` 中整合用户输入与当前用户 Session 信息。
-3.  **后端交互**：调用 `mockDb.createAppointment` 执行 POST 请求。
+3.  **后端交互**：调用 `apiService.createAppointment` 执行 POST 请求。
 4.  **UI 反馈**：根据 API 响应结果展示成功弹窗或错误警告。
 
 ### 依赖库
-*   **Data**: `mockDb` (getDepartments, getDoctors, createAppointment)。
+*   **Data**: `apiService` (getDepartments, getDoctors, createAppointment)。
 *   **Auth**: `authService` (getCurrentUser)。
 *   **Icons**: `lucide-react`。
 
@@ -87,10 +87,10 @@
 | `getStatusBadge` | UI 转换器：将后台状态代码转换为具有语义化颜色的标签组件。 |
 
 ### 数据流
-1.  **读取流**：`authService` (获取 ID) -> `mockDb.getAppointments(filter)` -> State (`appointments`) -> 排序 -> UI 表格。
+1.  **读取流**：`authService` (获取 ID) -> `apiService.getAppointments(filter)` -> State (`appointments`) -> 排序 -> UI 表格。
 2.  **交互流**：用户触发取消 -> 弹出 Confirm -> 调用 `updateAppointmentStatus` (PUT) -> 执行 `loadData` 重刷列表。
 
 ### 依赖库
-*   **Data**: `mockDb` (getAppointments, updateAppointmentStatus)。
+*   **Data**: `apiService` (getAppointments, updateAppointmentStatus)。
 *   **Auth**: `authService` (getCurrentUser)。
 *   **Icons**: `lucide-react` (Clock, CheckCircle, Ban)。

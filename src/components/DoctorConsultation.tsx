@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   getAppointments, getDoctors, getMedicines, getFullPatientDetails, 
   saveMedicalRecord, updateAppointmentStatus, getExistingPatient, invalidateCache 
-} from '../services/mockDb';
+} from '../services/apiService';
 import { getCurrentUser } from '../services/authService';
 import { Appointment, Doctor, Medicine, MedicalRecord, PrescriptionDetail, Patient } from '../types';
 import { Stethoscope, User, Clock, FileText, ChevronRight, Pill, Trash2, CheckCircle, AlertCircle, History, Users, BadgeCheck, BarChart2, PieChart as PieIcon, Activity, Calendar, UserCheck } from 'lucide-react';
