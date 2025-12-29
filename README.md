@@ -86,7 +86,7 @@ docker compose up -d
 ```
 
 #### 2. 初始化数据
-首次启动后，需手动插入演示数据（医生、患者、药品、统计数据等）：
+首次启动后，会自动插入数据，如需手动插入演示数据（医生、患者、药品、统计数据等）：
 ```bash
 # 插入基础业务数据
 docker exec -it meddata-api python insert_data_python/insert_data.py
@@ -96,7 +96,7 @@ docker exec -it meddata-api python insert_data_python/insert_multimodal.py
 ```
 
 #### 3. 访问应用
-浏览器访问：`http://localhost`
+浏览器访问：`http://localhost:1234`
 
 *   **管理员**: `admin` / `admin123`
 *   **医生**: `DOC001` / `123456`

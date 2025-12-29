@@ -38,7 +38,7 @@ services:
       dockerfile: Dockerfile
     container_name: meddata-ui
     ports:
-      - "80:80"  # 访问 http://localhost 即可
+      - "1234:80"  # 访问 http://localhost 即可
     depends_on:
       - backend
     networks:
