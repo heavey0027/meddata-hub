@@ -12,6 +12,7 @@
   <img src="https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript" />
   <img src="https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white" />
   <img src="https://img.shields.io/badge/Flask-2.x-000000?logo=flask&logoColor=white" />
+  <img src="https://img.shields.io/badge/JWT-Auth-000000?logo=json-web-tokens&logoColor=white" />
   <img src="https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white" />
   <img src="https://img.shields.io/badge/Docker-Enabled-2496ED?logo=docker&logoColor=white" />
   <img src="https://img.shields.io/badge/License-MIT-green" />
@@ -25,7 +26,9 @@
 
 ### 前端交互 (Frontend)
 *   **现代化架构**: 采用 React 19 + TypeScript 构建，利用客户端聚合模式优化数据交互。
-*   **严格权限控制 (RBAC)**: 患者/医生/管理员三级权限体系，视图与操作完全隔离。
+*   **安全与权限 (Security & RBAC)**: 
+    *   集成 **JWT (JSON Web Token)** 认证机制，实现前端自动 Token 管理与请求拦截。
+    *   患者/医生/管理员三级权限体系，视图与操作严格隔离。
 *   **AI 智能集成**:
     *   **影像诊断**: 集成多模态模型，支持 X 光/CT 片 AI 分析。
     *   **RAG 问答**: 基于医院数据的上下文增强对话助手。
@@ -33,6 +36,7 @@
 
 ### 后端架构 (Backend)
 *   **模块化单体 (Modular Monolith)**: 基于 Flask Blueprint 实现业务领域（Auth, Patient, Doctor 等）的物理隔离。
+*   **无状态认证**: 采用 **JWT** 标准进行身份验证，配合自定义装饰器实现接口级的权限校验。
 *   **复杂业务逻辑**:
     *   **事务脚本模式**: 确保病历写入与库存扣减的原子性。
     *   **高级 SQL 查询**: 实现相关子查询统计、双重 `NOT EXISTS` 筛选 VIP 患者等复杂逻辑。
@@ -55,7 +59,7 @@
 *   **[API 接口文档](./docs/BACKEND/API_DOCUMENTATION.md)**: 包含认证、挂号、病历、统计等全量接口说明。
 
 ### 前端逻辑与组件
-*   **[前端核心逻辑](./docs/FRONTEND/SERVICES_LOGIC.md)**: 核心服务层、Auth 流程及 AI 适配器。
+*   **[前端核心逻辑](./docs/FRONTEND/SERVICES_LOGIC.md)**: 核心服务层、Auth 流程 (JWT Handling) 及 AI 适配器。
 *   **UI 组件手册**:
     *   [核心基础 (Core)](./docs/FRONTEND/ui/CORE.md) | [临床业务 (Clinical)](./docs/FRONTEND/ui/CLINICAL.md)
     *   [患者服务 (Patient)](./docs/FRONTEND/ui/PATIENT.md) | [后台管理 (Admin)](./docs/FRONTEND/ui/ADMIN.md)
@@ -65,7 +69,7 @@
   * [应用启动流程（App Bootstrap）](./docs/BACKEND/核心文档/BACKEND_APP_BOOTSTRAP.md)
   * [后端文档总览（Summary）](./docs/BACKEND/核心文档/BACKEND_MODULES_SUMMARY.md)
 * **业务模块文档**：
-  * [认证 Auth](./docs/BACKEND/业务模块/BACKEND_API_AUTH.md) | [患者 Patient](./docs/BACKEND/业务模块/BACKEND_API_PATIENT.md)
+  * [认证 Auth (JWT)](./docs/BACKEND/业务模块/BACKEND_API_AUTH.md) | [患者 Patient](./docs/BACKEND/业务模块/BACKEND_API_PATIENT.md)
   * [医生 Doctor](./docs/BACKEND/业务模块/BACKEND_API_DOCTOR.md) | [挂号 Appointment](./docs/BACKEND/业务模块/BACKEND_API_APPOINTMENT.md)
   * [病历 Record](./docs/BACKEND/业务模块/BACKEND_API_RECORD.md) | [基础数据 Basic](./docs/BACKEND/业务模块/BACKEND_API_BASIC.md)
   * [多模态 Multimodal](./docs/BACKEND/业务模块/BACKEND_API_MULTIMODAL.md) | [统计 Stats](./docs/BACKEND/业务模块/BACKEND_API_STATS.md)
@@ -148,6 +152,7 @@ yarn dev
 
 ### Backend
 *   **Framework**: Python Flask (Blueprints, App Factory)
+*   **Security**: PyJWT (JSON Web Token Authentication)
 *   **Database**: MySQL (mysql-connector-python)
 *   **Patterns**: Transaction Script, Singleton (DB Pool), Facade
 *   **Utilities**: Flask-CORS, Python Logging

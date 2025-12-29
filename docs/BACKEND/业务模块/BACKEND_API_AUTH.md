@@ -6,14 +6,14 @@
 - **蓝图名称**：`auth_bp`  
 - **主要职责**：  
   - 提供统一的**用户登录认证接口**；  
-  - 根据不同用户角色（`patient` / `doctor` / `admin`）到对应表中校验账号密码；  
-  - 返回登录成功与否及用户基础信息。
+  - 处理不同角色的校验逻辑（管理员硬编码校验，医患查库校验）；  
+  - **生成 JWT (JSON Web Token)**：登录成功后颁发包含用户身份与时效的 Token。
 
-系统中使用的用户实体与数据库表对应关系（见 `DATABASE_DESIGN.md`）：
+系统中使用的用户实体与数据库表对应关系：
 
-- 患者 → 表：`PATIENTS`
-- 医生 → 表：`DOCTORS`
-- 管理员 → 当前实现中与医生/专门管理员表关联
+- 患者 → 表：`patients`
+- 医生 → 表：`doctors`
+- 管理员 → **硬编码校验**（无需数据库表）
 
 ---
 
@@ -31,7 +31,10 @@ def login():
 ```
 
 - **功能说明**：  
-  接收用户提交的账号、密码和角色信息，到对应的数据库表中进行校验；若认证通过，返回用户基础信息；否则返回错误消息。
+  接收用户提交的账号、密码和角色信息。
+  - **管理员**：验证硬编码凭证（`admin`/`admin123`）。
+  - **医/患**：查询对应数据库表验证凭证。
+  - **结果**：认证通过后，生成一个有效期为 **1小时** 的 JWT，并返回用户基础信息。
 
 ---
 
@@ -46,8 +49,8 @@ def login():
 
 ```json
 {
-  "id": "用户编号（患者编号 / 医生编号 / 管理员编号）",
-  "password": "登录密码（当前为明文校验）",
+  "id": "用户编号（如 P001, DOC001, admin）",
+  "password": "登录密码",
   "role": "patient | doctor | admin"
 }
 ```
@@ -56,9 +59,9 @@ def login():
 
 | 字段名    | 类型   | 是否必填 | 说明                                      |
 |-----------|--------|----------|-------------------------------------------|
-| `id`      | string | 是       | 用户编号：`PATIENTS.id` 或 `DOCTORS.id` |
-| `password`| string | 是       | 登录密码，对应表中的 `password` 字段     |
-| `role`    | string | 是       | 角色：`patient` / `doctor` / `admin`      |
+| `id`      | string | 是       | 用户 ID                                   |
+| `password`| string | 是       | 登录密码                                  |
+| `role`    | string | 是       | 角色标识：`patient` / `doctor` / `admin`  |
 
 ---
 
@@ -69,18 +72,17 @@ def login():
 ```json
 {
   "success": true,
-  "data": {
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIj...",
+  "user": {
     "id": "P001",
     "name": "张三",
-    "role": "patient",
-    "...": "其他与角色相关的基础信息"
+    "role": "patient"
   }
 }
 ```
 
-- `data` 中的字段来自对应用户表（`PATIENTS` / `DOCTORS` 等），典型包括：
-  - 患者：`id`, `name`, `gender`, `age`, `phone`, `address`, `create_time` 等；
-  - 医生：`id`, `name`, `title`, `specialty`, `phone`, `department_id` 等；
+- **token**: JWT 字符串，客户端需将其存储（如 localStorage）并在后续请求头中携带。
+- **user**: 返回的基础用户信息，用于前端展示。
 
 #### 3.2.2 登录失败：账号或密码错误
 
@@ -90,38 +92,25 @@ def login():
   "message": "账号或密码错误"
 }
 ```
-
-- HTTP 状态码：`401`
-- 触发条件：
-  - 根据 `id + role` 在数据库中未找到对应用户；
-  - 找到用户但 `password` 不匹配；
-
-模块中会记录 warning 级别日志，例如：
-
-```python
-logger.warning("Password mismatch for user: %s", user_id)
+或
+```json
+{
+  "success": false,
+  "message": "管理员认证失败"
+}
 ```
 
-#### 3.2.3 服务器内部错误
+- HTTP 状态码：`401`
+
+#### 3.2.3 服务器内部错误 / 参数错误
 
 ```json
 {
   "success": false,
-  "message": "服务器内部错误"
+  "message": "服务器内部错误" 
 }
 ```
-
-- HTTP 状态码：`500`
-- 触发条件：
-  - 与数据库连接失败；
-  - SQL 执行异常；
-  - 其他未捕获的运行时异常。
-
-模块中会记录 error 级别日志：
-
-```python
-logger.error("Login error: %s", e)
-```
+- HTTP 状态码：`500` (内部错误) 或 `400` (无效角色)
 
 ---
 
@@ -129,126 +118,54 @@ logger.error("Login error: %s", e)
 
 以下是 `login()` 函数的业务逻辑流程：
 
-1. **解析请求体**
-
-   ```python
-   data = request.json
-   user_id = data.get('id')
-   password = data.get('password')
-   role = data.get('role')  # 'patient', 'doctor', 'admin'
-   ```
-
-
-2. **获取数据库连接**
-
-   ```python
-   conn = get_db_connection()
-   cursor = conn.cursor(dictionary=True)
-   ```
-
-   - 调用 `app.utils.db.get_db_connection()` 从连接池获取连接；
-   - `dictionary=True` 使查询结果以字典形式返回，便于直接转成 JSON。
-
-3. **根据角色选择数据表**
-
-   - 当 `role == 'patient'` → 查询 `PATIENTS` 表：
-     - 字段定义见 `DATABASE_DESIGN.md` 中：
-
-       ```text
-       PATIENTS {
-           string id PK "患者编号"
-           string name "姓名"
-           string password "密码"
-           string gender "性别"
-           int age "年龄"
-           string phone "电话"
-           string address "地址"
-           date create_time "建档日期"
-       }
-       ```
-
-   - 当 `role == 'doctor'` → 查询 `DOCTORS` 表：
-
-       ```text
-       DOCTORS {
-           string id PK "医生编号"
-           string name "姓名"
-           string password "密码"
-           string title "职称"
-           string specialty "专业领域"
-           string phone "电话"
-           string department_id FK "所属科室"
-       }
-       ```
-
-
-
-4. **执行查询并校验密码**
-
-   - 根据 `id` 从相应表中查询用户记录；
-   - 若未查询到记录：
-     - 返回 `401` + `{"success": false, "message": "账号或密码错误"}`；
-   - 若查询到记录，则比较请求中的 `password` 与记录中的 `password` 字段：
-     - 完全相同 → 登录成功，返回用户基础信息；
-     - 不相同 → 记录 `logger.warning`，返回 401。
-
-5. **构造返回 JSON**
-
-   - 登录成功时，从查询结果中删除 `password` 字段（安全起见），仅返回必要的非敏感信息；
-   - 返回结构类似：
-
-     ```python
-     return jsonify({
-         "success": True,
-         "data": {
-             "id": row["id"],
-             "name": row["name"],
-             "role": role,
-             # ... 其他字段
-         }
-     })
-     ```
-
-6. **异常处理**
-
-   - 在 `try/except` 块中捕获所有异常 `Exception as e`；
-   - 打印错误日志并返回 `500` 状态码和通用错误消息。
-
-7. **资源释放**
-
-   - 在 `finally` 中关闭 `cursor` 与 `conn`：
-
-     ```python
-     finally:
-         if cursor: cursor.close()
-         if conn: conn.close()
-     ```
-
-   - 确保所有数据库资源被正确归还到连接池中。
+1.  **解析请求**：获取 `id`, `password`, `role`。
+2.  **管理员特殊处理**：
+    - 若 `role == 'admin'`，检查是否匹配 `id='admin'` 且 `password='admin123'`。
+    - 成功：跳转至 **步骤 4**。
+    - 失败：返回 401。
+3.  **数据库校验 (医/患)**：
+    - 连接数据库。
+    - 根据 role 选择表名 (`patients` 或 `doctors`)。
+    - 执行 SQL：`SELECT id, name FROM table WHERE id=%s AND password=%s`。
+    - 若查询到记录：跳转至 **步骤 4**。
+    - 若未查询到：记录 Warning 日志，返回 401。
+4.  **生成 Token (JWT)**：
+    - 调用内部函数 `generate_jwt(user_id, role)`。
+    - **Payload 内容**：
+      - `user_id`: 用户 ID
+      - `role`: 用户角色
+      - `exp`: 过期时间戳（当前时间 + 1小时）
+    - **签名算法**：`HS256`，使用配置中的 `SECRET_KEY` 进行签名。
+5.  **返回响应**：
+    - 构造包含 `token` 和 `user` 信息的 JSON 返回给客户端。
 
 ---
 
+## 5. JWT 详情
 
-## 5. 与其他模块的关系
+- **算法**：HMAC SHA-256 (HS256)
+- **密钥**：来源于 `app.utils.common.SECRET_KEY`。
+- **有效期**：1 小时 (`datetime.timedelta(hours=1)`)。
+- **Payload 结构**：
+
+  ```python
+  {
+      'user_id': 'P001',
+      'role': 'patient',
+      'exp': 1715000000  # Unix Timestamp
+  }
+  ```
+
+---
+
+## 6. 与其他模块的关系
 
 - **上游调用方**
-  - 前端登录页面/应用；
-  - 第三方系统（如后续集成的 HIS、LIS 等）也可以通过该接口做简单认证。
+  - 前端登录页面 (`/login`)。
 
 - **下游依赖**
-  - `app.utils.db.get_db_connection()`：数据库连接池；
-  - 数据库表：`PATIENTS`、`DOCTORS`；
-  - 日志系统：`logging.getLogger(__name__)` 统一日志输出。
+  - `app.utils.db`: 数据库连接。
+  - `app.utils.common`: 获取 `SECRET_KEY`。
 
 - **配合模块**
-  - 后续业务接口（挂号、病历、多模态数据等）可要求前端携带登录接口返回的用户 ID 与 role，进行权限控制与数据范围过滤。
-
----
-
-## 6. 小结
-
-`auth.py` 模块为完整后端提供了统一的登录入口：
-
-- 采用 **单一接口 `/api/login` + 多角色** 的设计；
-- 通过数据库表 `PATIENTS` / `DOCTORS` 等完成账号密码校验；
-- 在异常情况下保证数据库资源回收与日志记录。
+  - **后续鉴权**：系统中的其他受保护接口（如病历查询）应实现一个装饰器（Decorator），用于解析 HTTP Header 中的 Token，验证 `exp` 和签名，从而确认用户身份。
