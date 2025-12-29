@@ -34,11 +34,11 @@ services:
   # 前端服务
   frontend:
     build:
-      context: .
+      context: ./frontend
       dockerfile: Dockerfile
     container_name: meddata-ui
     ports:
-      - "1234:80"  # 访问 http://localhost 即可
+      - "1234:80"  # 访问 http://localhost:1234 即可
     depends_on:
       - backend
     networks:
