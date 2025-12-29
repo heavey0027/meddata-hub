@@ -51,6 +51,7 @@
 ### 系统架构
 *   **[前端架构设计](./docs/FRONTEND/FRONTEND_ARCHITECTURE.md)**: 技术选型、系统设计模式及核心依赖。
 *   **[后端架构设计](./docs/BACKEND/BACKEND_ARCHITECTURE.md)**: 蓝图设计、应用工厂模式及核心设计模式说明。
+*   **[Docker 容器化配置](./docs/DOCKER_CONFIG.md)**: 容器编排架构、网络拓扑及环境变量适配详解。
 *   **[API 接口文档](./docs/BACKEND/API_DOCUMENTATION.md)**: 包含认证、挂号、病历、统计等全量接口说明。
 
 ### 前端逻辑与组件
