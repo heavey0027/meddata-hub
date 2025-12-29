@@ -18,7 +18,7 @@
 ### 流量拓扑图
 ```mermaid
 graph LR
-    User(用户浏览器) -- HTTP :80 --> Nginx[Frontend-Nginx]
+    User(用户浏览器) -- HTTP :1234 --> Nginx[Frontend-Nginx]
     
     subgraph Docker_Network [meddata-net]
         Nginx -- /api/* --> Backend[Backend-Gunicorn]
@@ -43,7 +43,7 @@ graph LR
     *   **环境变量**: 通过 `environment` 注入 `DB_HOST=db`，覆盖代码中的 `localhost` 默认值，实现环境解耦。
 *   **前端服务 (`frontend`)**:
     *   **构建上下文**: 指定使用 `Dockerfile` (原文件名) 进行多阶段构建。
-    *   **端口映射**: `80:80` 将容器 Web 服务暴露给宿主机。
+    *   **端口映射**: `80:1234` 将容器 Web 服务暴露给宿主机。
 
 ### 2.2 `frontend.Dockerfile` (前端构建)
 采用 **多阶段构建 (Multi-stage Build)** 策略，显著减小镜像体积。
