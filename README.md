@@ -2,7 +2,7 @@
 # MedData Hub
 
 <p align="center">
-  <img src="./public/MedData_Hub.png" alt="MedData Hub Cover" width="100%" />
+  <img src="./frontend/public/MedData_Hub.png" alt="MedData Hub Cover" width="100%" />
 </p>
 
 > **基于 React 19 + Python Flask 构建的全栈智能医院管理系统。**
