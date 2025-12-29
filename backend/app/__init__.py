@@ -1,8 +1,8 @@
 # --- START OF FILE app/__init__.py ---
 import logging
-from flask import Flask
+from flask import Flask, request, jsonify
 from flask_cors import CORS
-from app.utils.common import check_timestamp
+from app.utils.common import check_timestamp, verify_jwt
 
 def setup_logging():
     """配置全局日志"""
@@ -62,6 +62,19 @@ def create_app():
         error = check_timestamp()
         if error:
             return error  # 校验失败，返回错误信息
+
+        # 跳过不需要 JWT 验证的接口
+        if request.endpoint in ['auth.login', 'patient.create_patient', 'root.index']:  # 如果是登录接口或创建患者接口
+            return  # 直接返回，允许请求通过，不进行 JWT 验证
+
+        # 对于其他接口，进行 JWT 验证
+        result = verify_jwt()  # 调用验证 JWT 的函数
+
+        if isinstance(result, dict):  # 如果 JWT 验证通过，返回的是解码后的 payload（字典类型）
+            request.user_data = result  # 将用户数据存储到 request.user_data 中
+        else:
+            # 如果 JWT 验证失败，返回错误信息（如 401 Unauthorized）
+            return result  # 返回 JWT 错误信息
 
     @app.route('/')
     def index():

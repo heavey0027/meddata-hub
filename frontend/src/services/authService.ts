@@ -3,20 +3,21 @@ import { UserRole, UserSession, Patient } from '../types';
 import { createPatient, loginUser } from './apiService';
 import { addLog } from './logger';
 
-const SESSION_KEY = 'meddata_user_session';
+const SESSION_KEY = process.env.REACT_APP_SESSION_KEY;
 const DEBUG_KEY = 'meddata_debug_mode';
 
 // 用户登录 
 export const login = async (role: UserRole, id: string, password?: string): Promise<UserSession> => {
   try {
-      // 直接调用后端 API
+      // 直接调用后端 API (该请求不会带 Token)
       const apiResponse = await loginUser(role, id, password || '');
       
       const session: UserSession = {
           id: apiResponse.user.id,
           name: apiResponse.user.name,
           role: apiResponse.user.role,
-          token: apiResponse.token // 如果后端返回 JWT token，可以在此保存
+          // 确保存储 Token
+          token: apiResponse.token 
       };
       
       // 持久化会话

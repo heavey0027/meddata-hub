@@ -3,6 +3,7 @@ import { addLog } from './logger';
 
 // 配置后端 API 地址。
 const API_BASE_URL = '/api';
+const SESSION_KEY = process.env.REACT_APP_SESSION_KEY;
 
 // --- TIME HELPERS ---
 const getTwoDigit = (num: number) => String(num).padStart(2, '0');
@@ -26,6 +27,18 @@ export const invalidateCache = (keyPattern: string) => {
 
 // --- API Helpers ---
 
+// 获取 JWT Auth Headers
+const getAuthHeaders = (): Record<string, string> => {
+  try {
+    const sessionStr = localStorage.getItem(SESSION_KEY);
+    if (!sessionStr) return {};
+    const session = JSON.parse(sessionStr);
+    return session.token ? { 'Authorization': `Bearer ${session.token}` } : {};
+  } catch (e) {
+    return {};
+  }
+};
+
 async function fetchFromApi<T>(endpoint: string): Promise<T> {
   // Use timestamp to prevent browser 304 caching
   const separator = endpoint.includes('?') ? '&' : '?';
@@ -41,10 +54,20 @@ async function fetchFromApi<T>(endpoint: string): Promise<T> {
     // 增加超时时间，避免真实网络环境下过早中断
     const timeoutId = setTimeout(() => controller.abort(), 10000); 
 
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, { 
+      signal: controller.signal,
+      headers: {
+        ...getAuthHeaders(), // 注入 JWT
+        'Content-Type': 'application/json'
+      }
+    });
     clearTimeout(timeoutId);
 
     if (!response.ok) {
+      if (response.status === 401) {
+        addLog('ERROR', 'AUTH', 'Token失效或未登录', endpoint);
+        // 可选：在这里触发登出逻辑
+      }
       throw new Error(`HTTP ${response.status} - ${response.statusText}`);
     }
 
@@ -65,7 +88,7 @@ async function fetchFromApi<T>(endpoint: string): Promise<T> {
   }
 };
 
-// Login API Call
+// Login API Call (不需要 Auth Header)
 export const loginUser = async (role: UserRole, id: string, password: string): Promise<any> => {
   const url = `${API_BASE_URL}/login?_t=${Date.now()}`;
   const body = { role, id, password };
@@ -106,6 +129,7 @@ export const checkBackendHealth = async (): Promise<boolean> => {
     const timeoutId = setTimeout(() => controller.abort(), 2000);
     const response = await fetch(targetUrl, { 
       method: 'GET',
+      headers: { ...getAuthHeaders() }, // Health check 也带上 Token
       signal: controller.signal
     });
     clearTimeout(timeoutId);
@@ -168,7 +192,10 @@ export const createPatient = async (patient: Patient) => {
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        ...getAuthHeaders() 
+      },
       body: JSON.stringify(patient)
     });
     const data = await response.json();
@@ -189,7 +216,10 @@ export const updatePatient = async (patient: Patient) => {
   try {
     const response = await fetch(url, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
       body: JSON.stringify(patient)
     });
     const data = await response.json();
@@ -207,7 +237,10 @@ export const deletePatient = async (id: string) => {
   addLog('INFO', 'API_REQUEST', 'DELETE 删除患者', `ID: ${id}`, { url });
 
   try {
-    const response = await fetch(url, { method: 'DELETE' });
+    const response = await fetch(url, { 
+      method: 'DELETE',
+      headers: { ...getAuthHeaders() }
+    });
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       throw new Error(data.message || '删除失败');
@@ -232,7 +265,10 @@ export const deleteMedicalRecord = async (id: string) => {
   addLog('INFO', 'API_REQUEST', 'DELETE 删除病历', `ID: ${id}`, { url });
 
   try {
-    const response = await fetch(url, { method: 'DELETE' });
+    const response = await fetch(url, { 
+      method: 'DELETE',
+      headers: { ...getAuthHeaders() }
+    });
     if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         throw new Error(data.message || '删除失败');
@@ -266,7 +302,10 @@ export const updateDoctor = async (id: string, data: Partial<Doctor>) => {
     try {
         const response = await fetch(url, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              ...getAuthHeaders()
+            },
             body: JSON.stringify(data)
         });
         const resData = await response.json();
@@ -283,7 +322,10 @@ export const deleteDoctor = async (id: string) => {
     const url = `${API_BASE_URL}/doctors/${id}?_t=${Date.now()}`;
     addLog('INFO', 'API_REQUEST', 'DELETE 删除医生', `ID: ${id}`, { url });
     try {
-        const response = await fetch(url, { method: 'DELETE' });
+        const response = await fetch(url, { 
+          method: 'DELETE',
+          headers: { ...getAuthHeaders() }
+        });
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));
             throw new Error(data.message || '删除失败');
@@ -313,7 +355,10 @@ export const deleteDepartment = async (id: string) => {
     const url = `${API_BASE_URL}/departments/${id}?_t=${Date.now()}`;
     addLog('INFO', 'API_REQUEST', 'DELETE 删除科室', `ID: ${id}`, { url });
     try {
-        const response = await fetch(url, { method: 'DELETE' });
+        const response = await fetch(url, { 
+          method: 'DELETE',
+          headers: { ...getAuthHeaders() }
+        });
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));
             throw new Error(data.message || '删除失败');
@@ -346,7 +391,10 @@ export const updateMedicine = async (id: string, data: Partial<Medicine>) => {
     try {
         const response = await fetch(url, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              ...getAuthHeaders()
+            },
             body: JSON.stringify(data)
         });
         const resData = await response.json();
@@ -363,7 +411,10 @@ export const deleteMedicine = async (id: string) => {
     const url = `${API_BASE_URL}/medicines/${id}?_t=${Date.now()}`;
     addLog('INFO', 'API_REQUEST', 'DELETE 删除药品', `ID: ${id}`, { url });
     try {
-        const response = await fetch(url, { method: 'DELETE' });
+        const response = await fetch(url, { 
+          method: 'DELETE',
+          headers: { ...getAuthHeaders() }
+        });
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));
             throw new Error(data.message || '删除失败');
@@ -389,7 +440,10 @@ export const createMultimodalData = async (formData: FormData) => {
     try {
         const response = await fetch(url, {
             method: 'POST',
-            body: formData // Browser sets Content-Type to multipart/form-data automatically
+            headers: {
+                ...getAuthHeaders() // 注意：这里不要设置 Content-Type，浏览器会自动处理 multipart/form-data boundary
+            },
+            body: formData 
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.message || '上传失败');
@@ -406,7 +460,10 @@ export const deleteMultimodalData = async (id: string) => {
     addLog('INFO', 'API_REQUEST', 'DELETE 删除多模态数据', `ID: ${id}`, { url });
 
     try {
-        const response = await fetch(url, { method: 'DELETE' });
+        const response = await fetch(url, { 
+          method: 'DELETE',
+          headers: { ...getAuthHeaders() }
+        });
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));
             throw new Error(data.message || '删除失败');
@@ -418,6 +475,36 @@ export const deleteMultimodalData = async (id: string) => {
     }
 };
 
+export const getFileUrl = (item: MultimodalData) => {
+  const { filePath, id } = item;
+  if (!filePath) return '';
+  
+  if (filePath.startsWith('blob:') || filePath.startsWith('http')) {
+      return filePath;
+  }
+  
+  // 仅返回 API 路径，不带 Token
+  return `${API_BASE_URL}/multimodal/file/${id}?_t=${Date.now()}`;
+};
+
+export const fetchFileBlob = async (url: string): Promise<Blob> => {
+  // 复用之前的 getAuthHeaders 函数
+  const headers = getAuthHeaders(); 
+  
+  const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+          ...headers 
+          // 注意：不需要 Content-Type，因为是下载
+      }
+  });
+
+  if (!response.ok) {
+      throw new Error(`文件下载失败: ${response.status} ${response.statusText}`);
+  }
+
+  return await response.blob();
+};
 export const getPrescriptionDetails = async (recordId?: string): Promise<PrescriptionDetail[]> => {
   let endpoint = '/prescription_details';
   if (recordId) {
@@ -462,7 +549,10 @@ export const saveMedicalRecord = async (record: MedicalRecord, details: Prescrip
   try {
     const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
         body: JSON.stringify(backendPayload)
     });
     const data = await response.json();
@@ -509,7 +599,10 @@ export const createAppointment = async (appointment: Appointment) => {
   try {
      const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
         body: JSON.stringify(backendPayload)
      });
      const data = await response.json();
@@ -530,7 +623,10 @@ export const updateAppointmentStatus = async (id: string, status: 'completed' | 
     try {
         const response = await fetch(url, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              ...getAuthHeaders()
+            },
             body: JSON.stringify({ status })
         });
         const data = await response.json();
@@ -699,7 +795,7 @@ export const getPatientDemographics = async (): Promise<PatientDemographics> => 
       totalVisits: records.length,
       genderDistribution: genderDist, 
       ageDistribution: ageDist, 
-      diagnosisDistribution: diagDist,
+      diagnosisDistribution: diagDist, 
       deptVisits: deptDist
   };
 };

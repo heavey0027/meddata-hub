@@ -20,6 +20,8 @@ import { addLog } from './services/logger';
 import { getCurrentUser, logout, isDebugMode } from './services/authService';
 import { UserRole } from './types';
 
+const SESSION_KEY = process.env.REACT_APP_SESSION_KEY;
+
 const SidebarLink = ({ to, icon, label }: { to: string, icon: React.ReactNode, label: string }) => (
   <NavLink 
     to={to} 
@@ -77,16 +79,25 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
 
   useEffect(() => {
-    checkBackendHealth().then(isConnected => {
-      // 修改：不再回退到 mock，连接失败即为 error
-      setDbStatus(isConnected ? 'connected' : 'error');
-      
-      if (isConnected) {
-        addLog('SUCCESS', '系统', '后端连接成功');
-      } else {
-        addLog('ERROR', '系统', '后端连接失败', '无法连接到 API 服务器');
-      }
-    });
+    // 修改：检测到有 token (JWT) 后再检查后端健康状态
+    const sessionStr = localStorage.getItem(SESSION_KEY);
+    const session = JSON.parse(sessionStr);
+
+    if (session?.token) {
+      checkBackendHealth().then(isConnected => {
+        // 修改：不再回退到 mock，连接失败即为 error
+        setDbStatus(isConnected ? 'connected' : 'error');
+        
+        if (isConnected) {
+          addLog('SUCCESS', '系统', '后端连接成功');
+        } else {
+          addLog('ERROR', '系统', '后端连接失败', '无法连接到 API 服务器');
+        }
+      });
+    } else {
+      // 如果没有 token，保持 checking 或视情况设为其他状态（这里保持 checking 以避免在登录页显示错误红点）
+      setDbStatus('checking');
+    }
   }, []);
 
   if (location.pathname === '/login') return <>{children}</>;
@@ -216,9 +227,9 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
              <SystemClock />
              <div className="h-6 w-px bg-gray-200 mx-2 hidden sm:block"></div>
              <div className="flex items-center gap-2">
-                <span className={`h-2.5 w-2.5 rounded-full ${dbStatus === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
-                <span className={`text-xs font-medium ${dbStatus === 'connected' ? 'text-green-600' : 'text-red-600'}`}>
-                    {dbStatus === 'connected' ? 'API Online' : 'Connection Error'}
+                <span className={`h-2.5 w-2.5 rounded-full ${dbStatus === 'connected' ? 'bg-green-500 animate-pulse' : dbStatus === 'error' ? 'bg-red-500' : 'bg-gray-300'}`}></span>
+                <span className={`text-xs font-medium ${dbStatus === 'connected' ? 'text-green-600' : dbStatus === 'error' ? 'text-red-600' : 'text-gray-500'}`}>
+                    {dbStatus === 'connected' ? 'API Online' : dbStatus === 'error' ? 'Connection Error' : 'Checking...'}
                 </span>
              </div>
           </div>

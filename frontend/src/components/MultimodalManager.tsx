@@ -1,17 +1,18 @@
-
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { getMultimodalData, createMultimodalData, deleteMultimodalData } from '../services/apiService';
+import { 
+  getMultimodalData, createMultimodalData, deleteMultimodalData, getFileUrl, fetchFileBlob } from '../services/apiService';
 import { MultimodalData, ModalityType } from '../types';
 import { 
   FileImage, FileAudio, FileVideo, FileText, File, Activity, 
-  Trash2, Upload, Plus, X, Search, DatabaseZap, Clock, FileType, Eye, Filter, PlayCircle
+  Trash2, Upload, X, Search, DatabaseZap, Clock, FileType, Eye, Filter, PlayCircle, Download
 } from 'lucide-react';
 import { getCurrentUser } from '../services/authService';
 
 export const MultimodalManager: React.FC = () => {
   const [dataList, setDataList] = useState<MultimodalData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterModality, setFilterModality] = useState<ModalityType | 'all'>('all');
   
@@ -30,23 +31,60 @@ export const MultimodalManager: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  // Preview State
+  // --- Preview State Changes ---
   const [viewingItem, setViewingItem] = useState<MultimodalData | null>(null);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null); // 保存 blob:url
+  const [previewLoading, setPreviewLoading] = useState(false); // 预览加载状态
 
   const user = getCurrentUser();
-  const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
     loadData();
   }, []);
 
+  // --- 核心修改：监听 viewingItem 变化，自动 Fetch Blob ---
+  useEffect(() => {
+    if (viewingItem) {
+      const url = getFileUrl(viewingItem);
+      // 如果已经是 blob 或外部链接，直接显示
+      if (url.startsWith('blob:') || url.startsWith('http')) {
+        setPreviewBlobUrl(url);
+        return;
+      }
+
+      setPreviewLoading(true);
+      fetchFileBlob(url)
+        .then(blob => {
+          const objectUrl = URL.createObjectURL(blob);
+          setPreviewBlobUrl(objectUrl);
+        })
+        .catch(err => {
+          console.error("Preview fetch failed", err);
+          alert("文件加载失败 (Token过期或无权限)");
+          setViewingItem(null); // 关闭弹窗
+        })
+        .finally(() => {
+          setPreviewLoading(false);
+        });
+    } else {
+      // 关闭弹窗时清理 URL，防止内存泄漏
+      if (previewBlobUrl) {
+        URL.revokeObjectURL(previewBlobUrl);
+        setPreviewBlobUrl(null);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewingItem]);
+
   const loadData = async () => {
     setLoading(true);
+    setErrorMsg('');
     try {
       const data = await getMultimodalData();
       setDataList(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      setErrorMsg(e.message || '加载失败，请检查登录状态');
     } finally {
       setLoading(false);
     }
@@ -103,6 +141,26 @@ export const MultimodalManager: React.FC = () => {
     }
   };
 
+  // --- 新增：处理直接下载 ---
+  // 因为 <a> 标签也不能带 Header，所以下载也需要先 fetch blob，再模拟点击
+  const handleDownload = async (item: MultimodalData) => {
+      try {
+          const url = getFileUrl(item);
+          const blob = await fetchFileBlob(url);
+          const blobUrl = URL.createObjectURL(blob);
+          
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = `file_${item.id}.${item.fileFormat || 'dat'}`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(blobUrl);
+      } catch (e: any) {
+          alert("下载失败: " + e.message);
+      }
+  };
+
   const resetForm = () => {
     setFormData({
       id: `MM${Date.now().toString().slice(-4)}`,
@@ -129,23 +187,28 @@ export const MultimodalManager: React.FC = () => {
     }
   };
 
-  const getFileUrl = (item: MultimodalData) => {
-      const { filePath, id } = item;
-      if (!filePath) return '';
-      
-      if (filePath.startsWith('blob:') || filePath.startsWith('http')) {
-          return filePath;
-      }
-      
-      return `api/multimodal/file/${id}?_t=${Date.now()}`;
-  };
-
+  // 渲染预览内容 (使用 state 中的 previewBlobUrl)
   const renderPreviewContent = (item: MultimodalData) => {
-      const src = getFileUrl(item);
+      if (previewLoading) {
+          return <div className="flex flex-col items-center justify-center p-10 text-gray-500">
+             <Clock className="h-10 w-10 animate-spin mb-2 text-indigo-500"/>
+             <p>安全加载文件中...</p>
+          </div>;
+      }
+
+      if (!previewBlobUrl) return <div className="text-red-500 p-10">无法加载预览</div>;
+
+      const src = previewBlobUrl;
       
       switch (item.modality) {
           case 'image':
-              return <img src={src} alt={item.description} className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-sm mx-auto" />;
+              return (
+                <img 
+                  src={src} 
+                  alt={item.description} 
+                  className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-sm mx-auto" 
+                />
+              );
           case 'audio':
               return (
                   <div className="w-full max-w-2xl mx-auto p-12 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl border border-indigo-100 shadow-inner flex flex-col items-center">
@@ -154,17 +217,11 @@ export const MultimodalManager: React.FC = () => {
                           <div className="relative bg-white p-6 rounded-full shadow-lg border border-purple-100">
                              <FileAudio className="h-20 w-20 text-purple-600" />
                           </div>
-                          <div className="absolute -bottom-2 -right-2 bg-indigo-600 p-2 rounded-full text-white shadow-md animate-pulse">
-                             <PlayCircle className="h-6 w-6" />
-                          </div>
                       </div>
-                      
                       <div className="text-center mb-10">
                          <h4 className="text-xl font-bold text-gray-800 mb-2">音频记录播放</h4>
-                         <p className="text-sm text-gray-500">ID: {item.id} | 格式: {item.fileFormat || 'Unknown'}</p>
+                         <p className="text-sm text-gray-500">ID: {item.id}</p>
                       </div>
-
-                      {/* Full width audio player to optimize progress bar length */}
                       <div className="w-full bg-white/60 backdrop-blur-sm p-4 rounded-xl border border-white/80 shadow-sm">
                           <audio controls src={src} className="w-full" />
                       </div>
@@ -185,21 +242,18 @@ export const MultimodalManager: React.FC = () => {
                   <div className="p-6 bg-gray-50 rounded-lg text-center">
                       <Activity className="h-12 w-12 text-orange-500 mx-auto mb-3" />
                       <p className="text-gray-600 mb-4">时序数据文件 (CSV/JSON)</p>
-                      <a 
-                        href={src} 
-                        target="_blank" 
-                        rel="noreferrer" 
-                        className="text-blue-600 hover:underline bg-white px-4 py-2 rounded border border-blue-200"
+                      <button 
+                        onClick={() => handleDownload(item)}
+                        className="text-blue-600 hover:underline bg-white px-4 py-2 rounded border border-blue-200 flex items-center gap-2 mx-auto"
                       >
-                          下载/查看源文件
-                      </a>
+                          <Download className="h-4 w-4"/> 下载源文件
+                      </button>
                   </div>
               );
           default:
               return (
                   <div className="text-center p-10 text-gray-500">
                       <p>暂不支持预览此格式 ({item.fileFormat})</p>
-                      <a href={src} target="_blank" rel="noreferrer" className="text-blue-500 mt-2 block hover:underline">下载文件</a>
                   </div>
               );
       }
@@ -215,6 +269,7 @@ export const MultimodalManager: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* 头部区域保持不变... */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div className="flex items-center gap-2">
             <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600">
@@ -262,6 +317,13 @@ export const MultimodalManager: React.FC = () => {
         </div>
       </div>
 
+      {errorMsg && (
+        <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm border border-red-200">
+          Error: {errorMsg}
+        </div>
+      )}
+
+      {/* 表格区域... */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -350,28 +412,31 @@ export const MultimodalManager: React.FC = () => {
                           <X className="h-6 w-6" />
                       </button>
                   </div>
+                  
+                  {/* Content Area */}
                   <div className="p-6 overflow-y-auto bg-gray-100/50 flex items-center justify-center min-h-[300px]">
                       {renderPreviewContent(viewingItem)}
                   </div>
+
+                  {/* Footer Area */}
                   <div className="p-4 border-t bg-gray-50 flex justify-between items-center text-xs text-gray-500">
                       <span>Format: {viewingItem.fileFormat || 'Unknown'}</span>
-                      <a 
-                        href={getFileUrl(viewingItem)} 
-                        download={`file_${viewingItem.id}.${viewingItem.fileFormat}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-blue-600 hover:underline"
+                      <button 
+                        onClick={() => handleDownload(viewingItem)}
+                        className="text-blue-600 hover:underline flex items-center gap-1"
+                        disabled={previewLoading}
                       >
-                          直接下载
-                      </a>
+                         <Download className="h-3 w-3"/> 保存到本地
+                      </button>
                   </div>
               </div>
           </div>,
           document.body
       )}
 
-      {/* Upload Modal */}
+      {/* Upload Modal (保持不变) */}
       {isModalOpen && createPortal(
+        // ... (上传模态框代码与之前相同，未改动)
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[9999] backdrop-blur-sm">
           <div className="bg-white rounded-xl w-full max-w-lg p-6 shadow-2xl animate-fade-in max-h-[90vh] overflow-y-auto">
              <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
@@ -382,6 +447,7 @@ export const MultimodalManager: React.FC = () => {
              </div>
              
              <form onSubmit={handleSubmit} className="space-y-4">
+                {/* ... 表单内容 ... */}
                 <div className="grid grid-cols-2 gap-4">
                    <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">数据 ID</label>
