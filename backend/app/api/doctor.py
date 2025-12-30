@@ -1,14 +1,28 @@
 # --- START OF FILE app/api/doctor.py ---
 from flask import Blueprint, request, jsonify
 from app.utils.db import get_db_connection
-from app.utils.redis_client import get_redis_client
+from app.utils.redis_client import redis_client  # 直接导入 redis_client 实例
 import logging
 import json
 
 doctor_bp = Blueprint('doctor', __name__)
 logger = logging.getLogger(__name__)
 
-redis_client = get_redis_client()
+
+# --- 辅助函数：清除缓存 ---
+def clear_doctor_cache(doctor_id=None):
+    try:
+        # 1. 清除所有医生列表缓存 (因为包含 pending_count，任何变动都可能影响)
+        redis_client.delete("doctors:list")
+
+        # 2. 如果指定了 ID，清除该医生的详情缓存
+        if doctor_id:
+            redis_client.delete(f"doctor:{doctor_id}")
+
+        logger.info(f"[CACHE CLEAR] Doctor cache cleared (ID: {doctor_id}).")
+    except Exception as e:
+        logger.error(f"[ERROR] Failed to clear doctor cache: {e}")
+
 
 # 获取所有医生信息
 @doctor_bp.route('/api/doctors', methods=['GET'])
@@ -16,14 +30,20 @@ def get_doctors():
     conn = None
     cursor = None
     try:
-        # 记录请求日志
-        logger.info("Request to get all doctors.")
+        # --- 1. 查缓存 ---
+        cache_key = "doctors:list"
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            logger.info("[CACHE HIT] Doctors list")
+            return jsonify(json.loads(cached_data))
+
+        # --- 2. 查库 ---
+        logger.info("[DB QUERY] Fetching all doctors with pending counts.")
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # 【高级查询】：相关子查询 
-        # 既查医生基本信息，又计算该医生当前有多少个 'pending' 状态的挂号
+        # 【高级查询】：相关子查询
         sql = """
             SELECT 
                 d.id, d.name, d.department_id, d.title, d.specialty, d.phone,
@@ -47,20 +67,20 @@ def get_doctors():
                 "pendingCount": row['pending_count']
             })
 
-        # 记录查询日志
-        logger.info("Fetched %d doctors with pending counts from the database.", len(data))
+        logger.info(f"[DB RESULT] Fetched {len(data)} doctors.")
+
+        # --- 3. 写缓存 (10分钟 - pending_count 不需要秒级实时，但也别太久) ---
+        redis_client.set(cache_key, json.dumps(data), ex=600)
 
         return jsonify(data)
 
     except Exception as e:
-        # 记录异常日志
-        logger.error("Error occurred while fetching doctors: %s", str(e))
-
+        logger.error(f"[ERROR] Fetching doctors failed: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
-        logger.info("Database connection closed.")
+
 
 # 查看某个医生详情
 @doctor_bp.route('/api/doctors/<string:doctor_id>', methods=['GET'])
@@ -68,26 +88,20 @@ def get_doctor_detail(doctor_id):
     conn = None
     cursor = None
     try:
-        logger.info("Request to get doctor detail: %s", doctor_id)
-
         # 1. 尝试查询缓存
         cache_key = f"doctor:{doctor_id}"
         cached_data = redis_client.get(cache_key)
 
         if cached_data:
-            logger.info(f"Cache hit for doctor ID: {doctor_id}")
             try:
-                # 只有反序列化成功才返回
-                data_dict = json.loads(cached_data)
-                return jsonify(data_dict), 200
+                logger.info(f"[CACHE HIT] Doctor detail: {doctor_id}")
+                return jsonify(json.loads(cached_data)), 200
             except Exception as e:
-                # 如果 Redis 数据格式坏了（比如存成了单引号字符串），记录日志并继续查库
-                logger.error(f"Redis data parse error: {e}")
+                logger.error(f"[ERROR] Redis data parse error: {e}")
                 redis_client.delete(cache_key)
-                logger.info(f"Deleted corrupted cache key: {cache_key}")
 
         # 2. 缓存未命中或解析失败，查询数据库
-        logger.info(f"Cache miss for doctor ID: {doctor_id}, querying database")
+        logger.info(f"[DB QUERY] Fetching doctor detail: {doctor_id}")
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
@@ -103,7 +117,7 @@ def get_doctor_detail(doctor_id):
         row = cursor.fetchone()
 
         if not row:
-            logger.warning("Doctor %s not found.", doctor_id)
+            logger.warning(f"[BLOCK] Doctor {doctor_id} not found.")
             return jsonify({"success": False, "message": "医生不存在"}), 404
 
         # 构造返回数据
@@ -117,19 +131,13 @@ def get_doctor_detail(doctor_id):
             "departmentName": row.get('department_name')
         }
 
-        # 3. 写入缓存 (json.dumps(data))
-        try:
-
-            redis_client.set(cache_key, json.dumps(data), ex=3600)
-            logger.info(f"Cached data for doctor ID: {doctor_id}")
-        except Exception as cache_e:
-            # 缓存写入失败不应该影响主流程返回，记录个错误日志即可
-            logger.error(f"Failed to write cache for doctor {doctor_id}: {cache_e}")
+        # 3. 写入缓存
+        redis_client.set(cache_key, json.dumps(data), ex=3600)
 
         return jsonify(data), 200
 
     except Exception as e:
-        logger.error("Error fetching doctor %s: %s", doctor_id, str(e))
+        logger.error(f"[ERROR] Fetching doctor {doctor_id} failed: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
 
     finally:
@@ -143,7 +151,7 @@ def update_doctor_detail(doctor_id):
     conn = None
     cursor = None
     try:
-        logger.info("Request to update doctor %s: %s", doctor_id, data)
+        logger.info(f"[ACTION] Updating doctor {doctor_id}: {data}")
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -152,7 +160,6 @@ def update_doctor_detail(doctor_id):
         if dept_id:
             cursor.execute("SELECT id FROM departments WHERE id = %s", (dept_id,))
             if not cursor.fetchone():
-                logger.warning("Department %s not found when updating doctor %s.", dept_id, doctor_id)
                 return jsonify({"success": False, "message": "所属科室不存在"}), 400
 
         # 构造更新语句
@@ -181,29 +188,25 @@ def update_doctor_detail(doctor_id):
         cursor.execute(sql, tuple(params))
         if cursor.rowcount == 0:
             conn.rollback()
-            logger.warning("Doctor %s not found for update.", doctor_id)
             return jsonify({"success": False, "message": "医生不存在或已被删除"}), 404
 
         conn.commit()
-        logger.info("Doctor %s updated successfully.", doctor_id)
 
-        # 删除 Redis 中缓存的医生数据
-        cache_key = f"doctor:{doctor_id}"
-        redis_client.delete(cache_key)  # 删除缓存
+        # 清除缓存
+        clear_doctor_cache(doctor_id)
 
-        logger.info(f"Cache for doctor ID {doctor_id} deleted successfully.")
-
+        logger.info(f"[SUCCESS] Doctor {doctor_id} updated.")
         return jsonify({"success": True, "message": "医生信息更新成功"}), 200
 
     except Exception as e:
         if conn: conn.rollback()
-        logger.error("Error updating doctor %s: %s", doctor_id, str(e))
+        logger.error(f"[ERROR] Updating doctor {doctor_id} failed: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
 
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
-        logger.info("Database connection closed for doctor update.")
+
 
 # 删除医生：若有病历/挂号关联，则无法删除
 @doctor_bp.route('/api/doctors/<string:doctor_id>', methods=['DELETE'])
@@ -211,7 +214,7 @@ def delete_doctor(doctor_id):
     conn = None
     cursor = None
     try:
-        logger.info("Request to delete doctor with ID: %s (simple logic).", doctor_id)
+        logger.info(f"[ACTION] Deleting doctor: {doctor_id}")
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -220,10 +223,7 @@ def delete_doctor(doctor_id):
         appointment_count = cursor.fetchone()[0]
 
         if appointment_count > 0:
-            logger.warning(
-                "Attempt to delete doctor %s failed: Doctor has %d associated appointments (any status).",
-                doctor_id, appointment_count
-            )
+            logger.warning(f"[BLOCK] Delete failed. Doctor {doctor_id} has {appointment_count} appointments.")
             return jsonify({"success": False, "message": "无法删除：该医生仍有关联的挂号记录。请先处理相关挂号。"}), 400
 
         # 检查该医生是否有任何相关的病历记录
@@ -231,33 +231,29 @@ def delete_doctor(doctor_id):
         record_count = cursor.fetchone()[0]
 
         if record_count > 0:
-            logger.warning(
-                "Attempt to delete doctor %s failed: Doctor has %d associated medical records.",
-                doctor_id, record_count
-            )
+            logger.warning(f"[BLOCK] Delete failed. Doctor {doctor_id} has {record_count} medical records.")
             return jsonify({"success": False, "message": "无法删除：该医生仍有关联的病历记录。请先处理相关病历。"}), 400
 
-        # 如果没有关联记录，则执行删除医生操作
+        # 执行删除
         cursor.execute("DELETE FROM doctors WHERE id = %s", (doctor_id,))
         if cursor.rowcount == 0:
             conn.rollback()
-            logger.warning("Doctor with ID %s not found for deletion.", doctor_id)
             return jsonify({"success": False, "message": "医生不存在或已删除。"}), 404
 
         conn.commit()
-        logger.info("Doctor with ID %s deleted successfully.", doctor_id)
+
+        # 清除缓存
+        clear_doctor_cache(doctor_id)
+
+        logger.info(f"[SUCCESS] Doctor {doctor_id} deleted.")
         return jsonify({"success": True, "message": "医生删除成功。"}), 200
 
     except Exception as e:
-        if conn:
-            conn.rollback()
-        logger.error("Error deleting doctor %s: %s", doctor_id, str(e))
+        if conn: conn.rollback()
+        logger.error(f"[ERROR] Deleting doctor {doctor_id} failed: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-        logger.info("Database connection closed for doctor deletion.")
+        if cursor: cursor.close()
+        if conn: conn.close()
 
 # --- END OF FILE app/api/doctor.py ---

@@ -1,12 +1,15 @@
 # --- START OF FILE app/api/record.py ---
 from flask import Blueprint, request, jsonify
 from app.utils.db import get_db_connection
+from app.utils.redis_client import redis_client
 import logging
 from app.utils.common import format_date
 from datetime import date
+import json
 
 record_bp = Blueprint('record', __name__)
 logger = logging.getLogger(__name__)
+
 
 # 获取所有（或某个患者）病历
 @record_bp.route('/api/records', methods=['GET'])
@@ -14,14 +17,20 @@ def get_records():
     conn = None
     cursor = None
     try:
-        # 记录请求日志
-        logger.info("Request to get medical records.")
+        patient_id = request.args.get('patient_id', '')
+
+        # --- 1. 查缓存 (10秒短效缓存) ---
+        cache_key = f"records:list:{patient_id}"
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            logger.info(f"[CACHE HIT] Medical records: {cache_key}")
+            return jsonify(json.loads(cached_data))
+
+        # --- 2. 查库 ---
+        logger.info(f"[DB QUERY] Fetching medical records (Patient: {patient_id or 'ALL'})")
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-
-        # 获取查询参数
-        patient_id = request.args.get('patient_id')  
 
         # 基本查询 SQL，关联患者和医生
         sql = """
@@ -43,9 +52,6 @@ def get_records():
 
         rows = cursor.fetchall()
 
-        # 记录查询日志
-        logger.info("Fetched %d medical records from the database.", len(rows))
-
         # 映射为前端驼峰命名
         data = []
         for row in rows:
@@ -59,15 +65,21 @@ def get_records():
                 "treatmentPlan": row['treatment_plan'],
                 "visitDate": format_date(row['visit_date'])
             })
+
+        logger.info(f"[DB RESULT] Fetched {len(data)} records.")
+
+        # --- 3. 写缓存 (10秒) ---
+        redis_client.set(cache_key, json.dumps(data), ex=10)
+
         return jsonify(data)
     except Exception as e:
         # 记录异常日志
-        logger.error("Error occurred while fetching medical records: %s", str(e))
+        logger.error(f"[ERROR] Fetching records failed: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
-        logger.info("Database connection closed.")
+
 
 # 获取所有（或某个病历）处方细则
 @record_bp.route('/api/prescription_details', methods=['GET'])
@@ -75,16 +87,21 @@ def get_prescription_details():
     conn = None
     cursor = None
     try:
-        # 记录请求日志
-        logger.info("Request to get prescription details.")
+        record_id = request.args.get('record_id', '')
+
+        # --- 1. 查缓存 (10秒) ---
+        cache_key = f"prescriptions:list:{record_id}"
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            logger.info(f"[CACHE HIT] Prescription details: {cache_key}")
+            return jsonify(json.loads(cached_data))
+
+        # --- 2. 查库 ---
+        logger.info(f"[DB QUERY] Fetching prescription details (Record: {record_id or 'ALL'})")
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # 获取查询参数
-        record_id = request.args.get('record_id') 
-
-        # 基本查询 SQL
         sql = """
             SELECT id, record_id, medicine_id, dosage, usage_info, days 
             FROM prescription_details
@@ -99,10 +116,6 @@ def get_prescription_details():
 
         rows = cursor.fetchall()
 
-        # 记录查询日志
-        logger.info("Fetched %d prescription details from the database.", len(rows))
-
-        # 映射 usage_info -> usage
         data = []
         for row in rows:
             data.append({
@@ -114,18 +127,19 @@ def get_prescription_details():
                 "days": row['days']
             })
 
+        # --- 3. 写缓存 (10秒) ---
+        redis_client.set(cache_key, json.dumps(data), ex=10)
+
         return jsonify(data)
 
     except Exception as e:
-        logger.error("Error occurred while fetching prescription details: %s", str(e))
+        logger.error(f"[ERROR] Fetching prescriptions failed: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-        logger.info("Database connection closed.")
+        if cursor: cursor.close()
+        if conn: conn.close()
+
 
 # 提交病历
 @record_bp.route('/api/records', methods=['POST'])
@@ -134,7 +148,7 @@ def create_record():
     record_data = data.get('record')
     details_list = data.get('details', [])
 
-    logger.info("Received data to create a new medical record: %s", record_data)
+    logger.info(f"[ACTION] Creating record {record_data.get('id')} for Patient {record_data.get('patientId')}")
     conn = None
     cursor = None
     try:
@@ -157,7 +171,6 @@ def create_record():
             record_data.get('treatmentPlan'),
             record_data.get('visitDate')
         ))
-        logger.info("Medical record ID %s created successfully.", record_data.get('id'))
 
         # 循环插入子表
         sql_detail = """
@@ -173,26 +186,19 @@ def create_record():
             res = cursor.fetchone()
 
             if not res:
-                logger.error("Medicine ID %s does not exist.", detail['medicineId'])
                 raise Exception(f"药品ID {detail['medicineId']} 不存在")
 
             # 计算扣除的库存数量
             stock = res[0]
             days = detail.get('days')
-            if stock <= 0:
-                logger.warning("Medicine ID %s has insufficient stock.", detail['medicineId'])
-                raise Exception(f"药品ID {detail['medicineId']} 库存不足")
 
-            # 简化为按天数扣除
             if stock < days:
-                logger.warning("Not enough stock for Medicine ID %s, available stock: %d, requested days: %d",
-                               detail['medicineId'], stock, days)
+                logger.warning(f"[BLOCK] Stock insufficient: Med {detail['medicineId']} (Has: {stock}, Need: {days})")
                 raise Exception(f"药品ID {detail['medicineId']} 库存不足，无法满足 {days} 天的需求")
 
             # 更新库存：扣除天数数量
             new_stock = stock - days
             cursor.execute("UPDATE medicines SET stock = %s WHERE id = %s", (new_stock, detail['medicineId']))
-            logger.info("Stock updated for Medicine ID %s. New stock: %d", detail['medicineId'], new_stock)
 
             cursor.execute(sql_detail, (
                 detail.get('id'),
@@ -202,31 +208,34 @@ def create_record():
                 detail.get('usage'),
                 detail.get('days')
             ))
-            logger.info("Prescription detail for Medicine ID %s inserted successfully.", detail['medicineId'])
 
         # 提交事务
         conn.commit()
-        logger.info("Medical record and prescription details committed successfully.")
+
+        # 核心业务，清除药品列表缓存（因为库存变了）
+        redis_client.delete('basic:meds:list')
+
+        logger.info(f"[SUCCESS] Record {record_data.get('id')} created.")
         return jsonify({"success": True, "message": "病历提交成功"})
 
     except Exception as e:
         # 发生任何错误，立即回滚
         if conn: conn.rollback()
-        logger.error("Error creating medical record: %s", str(e))
+        logger.error(f"[ERROR] Creating record failed: {str(e)}")
         return jsonify({"success": False, "message": "提交失败: " + str(e)}), 500
 
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
-        logger.info("Database connection closed.")
-    
+
+
 # 删除病历：级联删除处方明细
 @record_bp.route('/api/records/<string:record_id>', methods=['DELETE'])
 def delete_medical_record(record_id):
     conn = None
     cursor = None
     try:
-        logger.info("Request to delete medical record with ID: %s", record_id)
+        logger.info(f"[ACTION] Deleting record: {record_id}")
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -234,23 +243,18 @@ def delete_medical_record(record_id):
         cursor.execute("DELETE FROM medical_records WHERE id = %s", (record_id,))
         if cursor.rowcount == 0:
             conn.rollback()
-            logger.warning("Medical record with ID %s not found for deletion.", record_id)
             return jsonify({"success": False, "message": "病历不存在或已删除。"}), 404
 
         conn.commit()
-        logger.info("Medical record with ID %s and associated prescription details deleted successfully.", record_id)
+        logger.info(f"[SUCCESS] Record {record_id} deleted.")
         return jsonify({"success": True, "message": "病历及其相关处方明细删除成功。"}), 200
 
     except Exception as e:
-        if conn:
-            conn.rollback()
-        logger.error("Error deleting medical record %s: %s", record_id, str(e))
+        if conn: conn.rollback()
+        logger.error(f"[ERROR] Deleting record {record_id} failed: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-        logger.info("Database connection closed for medical record deletion.")
+        if cursor: cursor.close()
+        if conn: conn.close()
 
 # --- END OF FILE app/api/record.py ---

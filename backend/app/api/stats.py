@@ -1,26 +1,38 @@
 # --- START OF FILE app/stats.py ---
 from flask import Blueprint, request, jsonify
 from app.utils.db import get_db_connection
-from datetime import date,datetime
+from app.utils.redis_client import redis_client  # 导入 Redis
+from datetime import date, datetime
 import re
 import logging
+import json
 
 stats_bp = Blueprint('stats', __name__)
 logger = logging.getLogger(__name__)
+
 
 @stats_bp.route('/api/stats/sankey', methods=['GET'])
 def get_patient_flow_sankey():
     conn = None
     cursor = None
     try:
+        # --- 1. 查缓存 (1分钟) ---
+        cache_key = "stats:sankey"
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            logger.info(f"[CACHE HIT] Sankey diagram data")
+            return jsonify(json.loads(cached_data))
+
+        # --- 2. 查库 ---
+        logger.info("[DB QUERY] Calculating Sankey diagram flow...")
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # 定义桑基图的节点列表
         nodes = [{"name": "挂号总数"}]
         links = []
 
-        # Step 1: 获取各科室挂号量 (挂号 -> 科室)
+        # Step 1: 挂号 -> 科室
+        logger.info("[DB STEP] 1/4 Calculating Department Flow")
         sql_dept_flow = """
             SELECT d.name AS dept_name, COUNT(a.id) AS value
             FROM appointments a
@@ -46,8 +58,8 @@ def get_patient_flow_sankey():
                 "value": flow['value']
             })
 
-        # Step 2: 获取各科室的确诊量 (科室 -> 确诊)
-        # 只要有 medical_records 记录就算确诊
+        # Step 2: 科室 -> 确诊
+        logger.info("[DB STEP] 2/4 Calculating Diagnosis Flow")
         sql_diag_flow = """
             SELECT d.name AS dept_name, COUNT(r.id) AS value
             FROM appointments a
@@ -73,8 +85,8 @@ def get_patient_flow_sankey():
                 "value": flow['value']
             })
 
-        # Step 3: 获取开药量 (确诊 -> 开药)
-        # 在 medical_records 基础上，关联 prescription_details
+        # Step 3: 确诊 -> 开药
+        logger.info("[DB STEP] 3/4 Calculating Medication Flow")
         sql_med_flow = """
             SELECT COUNT(DISTINCT r.id) AS value
             FROM medical_records r
@@ -93,10 +105,9 @@ def get_patient_flow_sankey():
             "value": med_count
         })
 
-        # Step 4: 离院 (开药 -> 离院)
-        # 假设开药后的人都离院了
+        # Step 4: 离院
+        logger.info("[DB STEP] 4/4 Calculating Discharge Flow")
         nodes.append({"name": "离院/康复"})
-
         links.append({
             "source": "开药/治疗",
             "target": "离院/康复",
@@ -115,12 +126,17 @@ def get_patient_flow_sankey():
                 "value": no_med_count
             })
 
-        logging.info(f"Nodes: {nodes}")
-        logging.info(f"Links: {links}")
-        return jsonify({"nodes": nodes, "links": links})
+        result = {"nodes": nodes, "links": links}
+
+        logger.info(f"[DB RESULT] Sankey calculation done. Nodes: {len(nodes)}, Links: {len(links)}")
+
+        # --- 3. 写缓存 (1分钟) ---
+        redis_client.set(cache_key, json.dumps(result), ex=60)
+
+        return jsonify(result)
 
     except Exception as e:
-        logger.error(f"Sankey Error: {e}")
+        logger.error(f"[ERROR] Sankey calculation failed: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
         if cursor: cursor.close()
@@ -129,23 +145,9 @@ def get_patient_flow_sankey():
 # 按月份统计患者档案数与就诊人次，并计算环比增长率
 @stats_bp.route('/api/statistics/monthly', methods=['GET'])
 def get_monthly_statistics():
-    """
-    请求参数:
-      - month: 格式支持 "YYYY-MM"、"YYYYMM"、"YYYY-MM-DD"
-    返回 JSON:
-      {
-        "month": "YYYY-MM",
-        "patientCount": int,
-        "prevPatientCount": int,
-        "patientCountGrowthRate": float|null, 
-        "visitCount": int,
-        "prevVisitCount": int,
-        "visitCountGrowthRate": float|null
-      }
-    """
     month_str = request.args.get('month')
     if not month_str:
-        return jsonify({"success": False, "message": "参数 month 必需，格式例如: 2025-12"}), 400
+        return jsonify({"success": False, "message": "参数 month 必需"}), 400
 
     # 解析 month 参数
     try:
@@ -157,24 +159,33 @@ def get_monthly_statistics():
         elif re.match(r'^\d{4}-\d{2}-\d{2}$', month_str):
             dt = datetime.strptime(month_str, "%Y-%m-%d")
         else:
-            return jsonify({"success": False, "message": "month 格式不支持，请使用 YYYY-MM 或 YYYYMM"}), 400
+            return jsonify({"success": False, "message": "month 格式错误"}), 400
         year = dt.year
         month = dt.month
     except Exception as e:
-        logger.warning("Invalid month parameter: %s, error: %s", month_str, str(e))
+        logger.warning(f"[BLOCK] Invalid month param: {month_str}")
         return jsonify({"success": False, "message": "month 参数解析失败"}), 400
-
-    # 计算上个月的年月
-    if month == 1:
-        prev_year = year - 1
-        prev_month = 12
-    else:
-        prev_year = year
-        prev_month = month - 1
 
     conn = None
     cursor = None
     try:
+        # --- 1. 查缓存 (10分钟) ---
+        cache_key = f"stats:monthly:{year}:{month}"
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            logger.info(f"[CACHE HIT] Monthly stats: {year}-{month}")
+            return jsonify(json.loads(cached_data))
+
+        # --- 2. 查库 ---
+        logger.info(f"[DB QUERY] Calculating monthly stats for {year}-{month}")
+
+        if month == 1:
+            prev_year = year - 1
+            prev_month = 12
+        else:
+            prev_year = year
+            prev_month = month - 1
+
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
@@ -183,70 +194,57 @@ def get_monthly_statistics():
             "SELECT COUNT(*) AS cnt FROM patients WHERE YEAR(create_time) = %s AND MONTH(create_time) = %s",
             (year, month)
         )
-        row = cursor.fetchone()
-        patient_count = int(row['cnt'] if row and row['cnt'] is not None else 0)
+        patient_count = int(cursor.fetchone()['cnt'] or 0)
 
         # 上个月患者档案数
         cursor.execute(
             "SELECT COUNT(*) AS cnt FROM patients WHERE YEAR(create_time) = %s AND MONTH(create_time) = %s",
             (prev_year, prev_month)
         )
-        row = cursor.fetchone()
-        prev_patient_count = int(row['cnt'] if row and row['cnt'] is not None else 0)
+        prev_patient_count = int(cursor.fetchone()['cnt'] or 0)
 
         # 本月就诊人次
         cursor.execute(
             "SELECT COUNT(*) AS cnt FROM medical_records WHERE YEAR(visit_date) = %s AND MONTH(visit_date) = %s",
             (year, month)
         )
-        row = cursor.fetchone()
-        visit_count = int(row['cnt'] if row and row['cnt'] is not None else 0)
+        visit_count = int(cursor.fetchone()['cnt'] or 0)
 
         # 上个月就诊人次
         cursor.execute(
             "SELECT COUNT(*) AS cnt FROM medical_records WHERE YEAR(visit_date) = %s AND MONTH(visit_date) = %s",
             (prev_year, prev_month)
         )
-        row = cursor.fetchone()
-        prev_visit_count = int(row['cnt'] if row and row['cnt'] is not None else 0)
+        prev_visit_count = int(cursor.fetchone()['cnt'] or 0)
 
         # 计算环比增长率
         def calc_growth(current, previous):
-            if previous == 0:
-                return None
-            try:
-                rate = (current - previous) / previous * 100.0
-                return round(rate, 2)
-            except Exception:
-                return None
-
-        patient_growth = calc_growth(patient_count, prev_patient_count)
-        visit_growth = calc_growth(visit_count, prev_visit_count)
+            if previous == 0: return None
+            return round((current - previous) / previous * 100.0, 2)
 
         res = {
             "month": f"{year:04d}-{month:02d}",
             "patientCount": patient_count,
             "prevPatientCount": prev_patient_count,
-            "patientCountGrowthRate": patient_growth,
+            "patientCountGrowthRate": calc_growth(patient_count, prev_patient_count),
             "visitCount": visit_count,
             "prevVisitCount": prev_visit_count,
-            "visitCountGrowthRate": visit_growth
+            "visitCountGrowthRate": calc_growth(visit_count, prev_visit_count)
         }
 
-        logger.info("Monthly statistics for %s fetched: patients=%d (prev=%d), visits=%d (prev=%d)",
-                    res['month'], patient_count, prev_patient_count, visit_count, prev_visit_count)
+        logger.info(f"[DB RESULT] {res['month']} Stats: Patients={patient_count}, Visits={visit_count}")
+
+        # --- 3. 写缓存 (10分钟) ---
+        redis_client.set(cache_key, json.dumps(res), ex=600)
 
         return jsonify(res)
 
     except Exception as e:
-        logger.error("Error fetching monthly statistics for %s: %s", month_str, str(e))
+        logger.error(f"[ERROR] Monthly stats failed: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-        logger.info("Database connection closed for monthly statistics.")
+        if cursor: cursor.close()
+        if conn: conn.close()
 
 # --- END OF FILE app/stats.py ---

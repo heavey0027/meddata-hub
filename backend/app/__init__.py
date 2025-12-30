@@ -17,11 +17,11 @@ def setup_logging():
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
 
-    # 文件处理器
-    file_handler = logging.FileHandler('app.log', mode='a')
+    # 文件处理器 (只记录 Warning 以上级别，防止日志文件爆炸)
+    file_handler = logging.FileHandler('app.log', mode='a', encoding='utf-8')
     file_handler.setLevel(logging.WARNING)
 
-    # 格式
+    # [结构化日志] 格式优化
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     console_handler.setFormatter(formatter)
     file_handler.setFormatter(formatter)
@@ -59,25 +59,39 @@ def create_app():
 
     @app.before_request
     def before_request():
+        # [优化] 处理浏览器的 OPTIONS 预检请求，直接放行，避免触发 401
+        if request.method == 'OPTIONS':
+            return
+
+        # 1. 时间戳防重放校验
         error = check_timestamp()
         if error:
-            return error  # 校验失败，返回错误信息
+            return error
 
-        # 跳过不需要 JWT 验证的接口
-        if request.endpoint in ['auth.login', 'patient.create_patient', 'root.index']:  # 如果是登录接口或创建患者接口
-            return  # 直接返回，允许请求通过，不进行 JWT 验证
+        # 2. 白名单放行
+        # auth.login: 登录
+        # patient.create_patient: 注册
+        # root.index: 健康检查
+        # static: 静态资源
+        public_endpoints = ['auth.login', 'patient.create_patient', 'root.index', 'static']
 
-        # 对于其他接口，进行 JWT 验证
-        result = verify_jwt()  # 调用验证 JWT 的函数
+        # 如果 endpoint 为空(404)或在白名单中，跳过 JWT 检查
+        if not request.endpoint or request.endpoint in public_endpoints:
+            return
 
-        if isinstance(result, dict):  # 如果 JWT 验证通过，返回的是解码后的 payload（字典类型）
-            request.user_data = result  # 将用户数据存储到 request.user_data 中
+        # 3. JWT 身份校验
+        result = verify_jwt()
+
+        if isinstance(result, dict):
+            # 校验通过，挂载用户信息
+            request.user_data = result
         else:
-            # 如果 JWT 验证失败，返回错误信息（如 401 Unauthorized）
-            return result  # 返回 JWT 错误信息
+            # 校验失败，返回 Response (401)
+            return result
 
     @app.route('/')
     def index():
         return "MedData Hub API is running..."
 
     return app
+# --- END OF FILE app/__init__.py ---

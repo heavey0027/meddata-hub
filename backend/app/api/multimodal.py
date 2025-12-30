@@ -4,6 +4,8 @@ import logging
 from flask import Blueprint, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 from app.utils.db import get_db_connection
+from app.utils.redis_client import redis_client  # 导入 Redis
+import json
 
 multimodal_bp = Blueprint('multimodal', __name__)
 logger = logging.getLogger(__name__)
@@ -13,19 +15,35 @@ UPLOAD_ROOT = os.path.join(os.getcwd(), "uploaded_files")
 os.makedirs(UPLOAD_ROOT, exist_ok=True)
 
 
+# --- 辅助函数：清除列表缓存 ---
+def clear_multimodal_list_cache():
+    try:
+        # 清除所有列表缓存 (multimodal:list:*)
+        for key in redis_client.scan_iter("multimodal:list:*"):
+            redis_client.delete(key)
+        logger.info("[CACHE CLEAR] Multimodal list cache cleared.")
+    except Exception as e:
+        logger.error(f"[ERROR] Failed to clear multimodal cache: {e}")
+
+
 # 获取多模态数据列表
 @multimodal_bp.route('/api/multimodal', methods=['GET'])
 def get_multimodal_list():
     conn = None
     cursor = None
     try:
-        modality = request.args.get('modality')
-        patient_id = request.args.get('patientId')
+        modality = request.args.get('modality', '')
+        patient_id = request.args.get('patientId', '')
 
-        logger.info(
-            "Request to get multimodal list, modality=%s, patientId=%s",
-            modality, patient_id
-        )
+        # --- 1. 查缓存 ---
+        cache_key = f"multimodal:list:{modality}:{patient_id}"
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            logger.info(f"[CACHE HIT] Multimodal list: {cache_key}")
+            return jsonify(json.loads(cached_data))
+
+        # --- 2. 查库 ---
+        logger.info(f"[DB QUERY] Fetching multimodal data (Modality: {modality}, Patient: {patient_id})")
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
@@ -67,19 +85,20 @@ def get_multimodal_list():
                 "fileUrl": f"/api/multimodal/file/{row['id']}",
             })
 
-        logger.info("Fetched %d multimodal records.", len(data))
+        logger.info(f"[DB RESULT] Fetched {len(data)} records.")
+
+        # --- 3. 写缓存 (30秒) ---
+        redis_client.set(cache_key, json.dumps(data), ex=30)
+
         return jsonify(data)
 
     except Exception as e:
-        logger.error("Error occurred while fetching multimodal data: %s", str(e))
+        logger.error(f"[ERROR] Fetching multimodal list failed: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-        logger.info("Database connection closed for multimodal list.")
+        if cursor: cursor.close()
+        if conn: conn.close()
 
 
 # 创建多模态数据（支持 multipart/form-data 上传文件，也支持纯 JSON）
@@ -102,27 +121,20 @@ def create_multimodal():
 
         _id = get_field("id")
         modality = get_field("modality")
-        patient_id = get_field("patientId")
-        record_id = get_field("recordId")
-        source_table = get_field("sourceTable")
-        source_pk = get_field("sourcePk")
-        text_content = get_field("textContent")
-        description = get_field("description")
 
-        logger.info("Request to create multimodal: id=%s, modality=%s", _id, modality)
+        logger.info(f"[ACTION] Creating multimodal record: {_id} ({modality})")
 
-        # 必填校验
         if not _id or not modality:
             return jsonify({"success": False, "message": "id 和 modality 为必填字段"}), 400
 
-        # 默认值，避免 NOT NULL 报错
-        if not source_table:
-            source_table = "Upload"
-        if not source_pk:
-            source_pk = _id
+        patient_id = get_field("patientId")
+        record_id = get_field("recordId")
+        source_table = get_field("sourceTable") or "Upload"
+        source_pk = get_field("sourcePk") or _id
+        text_content = get_field("textContent")
+        description = get_field("description")
 
-        # 处理文件
-        file_path = None      
+        file_path = None
         file_format = None
 
         if uploaded_file and uploaded_file.filename:
@@ -130,12 +142,7 @@ def create_multimodal():
             _, ext = os.path.splitext(filename)
             file_format = ext.lstrip(".").lower() if ext else None
 
-            # 按模态分子目录
-            sub_dir = (
-                modality
-                if modality in ["text", "image", "audio", "video", "pdf", "timeseries", "other"]
-                else "other"
-            )
+            sub_dir = modality if modality in ["text", "image", "audio", "video", "pdf"] else "other"
             save_dir = os.path.join(UPLOAD_ROOT, sub_dir)
             os.makedirs(save_dir, exist_ok=True)
 
@@ -177,8 +184,10 @@ def create_multimodal():
         )
         conn.commit()
 
-        logger.info("Multimodal record %s created successfully.", _id)
+        # 清除列表缓存
+        clear_multimodal_list_cache()
 
+        logger.info(f"[SUCCESS] Multimodal record {_id} created.")
         return jsonify(
             {
                 "success": True,
@@ -193,17 +202,13 @@ def create_multimodal():
         ), 201
 
     except Exception as e:
-        if conn:
-            conn.rollback()
-        logger.error("Error occurred while creating multimodal data: %s", str(e))
+        if conn: conn.rollback()
+        logger.error(f"[ERROR] Creating multimodal failed: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
 
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-        logger.info("Database connection closed for multimodal create.")
+        if cursor: cursor.close()
+        if conn: conn.close()
 
 
 # 删除多模态数据
@@ -212,7 +217,7 @@ def delete_multimodal(data_id):
     conn = None
     cursor = None
     try:
-        logger.info("Request to delete multimodal record: %s", data_id)
+        logger.info(f"[ACTION] Deleting multimodal record: {data_id}")
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
@@ -222,7 +227,7 @@ def delete_multimodal(data_id):
         row = cursor.fetchone()
 
         if not row:
-            logger.warning("Multimodal record %s not found.", data_id)
+            logger.warning(f"[BLOCK] Record {data_id} not found.")
             return jsonify({"success": False, "message": "记录不存在"}), 404
 
         file_path = row["file_path"]
@@ -231,41 +236,34 @@ def delete_multimodal(data_id):
         cursor.execute("DELETE FROM multimodal_data WHERE id = %s", (data_id,))
         if cursor.rowcount == 0:
             conn.rollback()
-            logger.warning("Multimodal record %s not found when deleting.", data_id)
             return jsonify({"success": False, "message": "记录不存在或已被删除"}), 404
 
         conn.commit()
-        logger.info("Multimodal record %s deleted from DB.", data_id)
 
         # 尝试删文件
         if file_path:
-            if os.path.isabs(file_path):
-                abs_path = file_path
-            else:
-                abs_path = os.path.join(os.getcwd(), file_path)
-            abs_path = os.path.normpath(abs_path)
-
+            abs_path = file_path if os.path.isabs(file_path) else os.path.join(os.getcwd(), file_path)
             if os.path.exists(abs_path):
                 try:
                     os.remove(abs_path)
-                    logger.info("File %s deleted successfully.", abs_path)
+                    logger.info(f"[FILE DELETE] Removed {abs_path}")
                 except Exception as fe:
-                    logger.warning("Failed to delete file %s: %s", abs_path, str(fe))
+                    logger.warning(f"[FILE ERROR] Failed to delete file: {fe}")
 
-        return jsonify({"success": True, "message": "多模态记录及文件删除成功"}), 200
+        # 清除列表缓存
+        clear_multimodal_list_cache()
+
+        logger.info(f"[SUCCESS] Record {data_id} deleted.")
+        return jsonify({"success": True, "message": "删除成功"}), 200
 
     except Exception as e:
-        if conn:
-            conn.rollback()
-        logger.error("Error deleting multimodal %s: %s", data_id, str(e))
+        if conn: conn.rollback()
+        logger.error(f"[ERROR] Deleting multimodal failed: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
 
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-        logger.info("Database connection closed for multimodal delete.")
+        if cursor: cursor.close()
+        if conn: conn.close()
 
 
 # 按 id 获取具体文件内容
@@ -274,7 +272,8 @@ def get_multimodal_file(data_id):
     conn = None
     cursor = None
     try:
-        logger.info("Request to get file for multimodal record: %s", data_id)
+        # 文件流不做缓存，直接查库拿路径
+        logger.info(f"[FILE ACCESS] Request for record: {data_id}")
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
@@ -283,12 +282,10 @@ def get_multimodal_file(data_id):
         row = cursor.fetchone()
 
         if not row:
-            logger.warning("Multimodal record %s not found.", data_id)
             return jsonify({"success": False, "message": "记录不存在"}), 404
 
         file_path = row["file_path"]
         if not file_path:
-            logger.warning("Multimodal record %s has no file_path.", data_id)
             return jsonify({"success": False, "message": "该记录没有关联文件"}), 404
 
         # 相对路径 -> 绝对路径
@@ -298,24 +295,19 @@ def get_multimodal_file(data_id):
             abs_path = os.path.join(os.getcwd(), file_path)
         abs_path = os.path.normpath(abs_path)
 
-        logger.info("Resolved file absolute path: %s", abs_path)
-
         if not os.path.exists(abs_path):
-            logger.warning("File %s not found on disk.", abs_path)
+            logger.warning(f"[FILE MISSING] {abs_path}")
             return jsonify({"success": False, "message": "文件不存在"}), 404
 
         # 直接根据绝对路径返回文件
         return send_file(abs_path, as_attachment=False)
 
     except Exception as e:
-        logger.error("Error fetching file for multimodal %s: %s", data_id, str(e))
+        logger.error(f"[ERROR] File access failed: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
 
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-        logger.info("Database connection closed for multimodal file fetch.")
+        if cursor: cursor.close()
+        if conn: conn.close()
 
 # --- END OF FILE app/api/multimodal.py ---
