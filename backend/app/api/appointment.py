@@ -1,12 +1,15 @@
 # --- START OF FILE app/api/appointment.py ---
 from flask import Blueprint, request, jsonify
 from app.utils.db import get_db_connection
+from app.utils.redis_client import redis_client
 import logging
 from collections import defaultdict
 import datetime
+import json
 
 appointment_bp = Blueprint('appointment', __name__)
 logger = logging.getLogger(__name__)
+
 
 # 获取预约数据
 @appointment_bp.route('/api/appointments', methods=['GET'])
@@ -14,19 +17,26 @@ def get_appointments():
     conn = None
     cursor = None
     try:
-        # 记录请求日志
-        logger.info("Request to get all appointments.")
+        role = request.args.get('role', '')
+        date = request.args.get('date', '')
+        doctor_id = request.args.get('doctor_id', '')
+        patient_id = request.args.get('patient_id', '')
+
+        # --- 1. 尝试查缓存 ---
+        cache_key = f"appt:list:{role}:{date}:{doctor_id}:{patient_id}"
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            # [结构化日志] 明确标识缓存命中
+            logger.info(f"[CACHE HIT] Appointments list for key: {cache_key}")
+            return jsonify(json.loads(cached_data))
+
+        # --- 2. 查数据库 ---
+        # [结构化日志] 明确标识缓存未命中，开始查库
+        logger.info(f"[DB QUERY] Fetching appointments (Role: {role}, Date: {date}, Doc: {doctor_id}, Patient: {patient_id})")
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # 获取查询参数
-        role = request.args.get('role')  
-        date = request.args.get('date')  
-        doctor_id = request.args.get('doctor_id')  
-        patient_id = request.args.get('patient_id')  
-
-        # 构建基本查询 SQL，关联医生和科室
         sql = """
             SELECT a.id AS appointment_id, a.patient_id, a.department_id, a.doctor_id, a.description, a.status, 
                    a.create_time, d.name AS doctor_name, dept.name AS department_name
@@ -62,10 +72,6 @@ def get_appointments():
 
         rows = cursor.fetchall()
 
-        # 记录查询日志
-        logger.info("Fetched %d appointment records from the database.", len(rows))
-
-        # 构造响应数据
         data = []
         for row in rows:
             cursor.execute("SELECT name, phone, age FROM patients WHERE id = %s", (row['patient_id'],))
@@ -89,20 +95,21 @@ def get_appointments():
                 "description": row['description']
             })
 
-        logger.info("Returned data for appointments: %s", data)
+        # 只记录返回条数，不打印完整数据，防止刷屏
+        logger.info(f"[DB RESULT] Fetched {len(data)} appointment records.")
+
+        # --- 3. 写入缓存 ---
+        redis_client.set(cache_key, json.dumps(data, default=str), ex=15)
 
         return jsonify(data)
 
     except Exception as e:
-        logger.error("Error occurred while fetching appointments: %s", str(e))
+        logger.error(f"[ERROR] Fetching appointments failed: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-        logger.info("Database connection closed.")
+        if cursor: cursor.close()
+        if conn: conn.close()
 
 
 # 根据年、月、日统计预约数据
@@ -111,51 +118,48 @@ def get_appointment_statistics():
     conn = None
     cursor = None
     try:
-        # 记录请求日志
-        logger.info("Request to get appointment statistics.")
+        date = request.args.get('date', '')
+        role = request.args.get('role', '')
 
+        # --- 1. 尝试查缓存 ---
+        cache_key = f"appt:stats:{date}:{role}"
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            logger.info(f"[CACHE HIT] Appointment statistics for {date}")
+            return jsonify(json.loads(cached_data))
+
+        # --- 2. 查数据库 ---
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # 获取查询参数
-        date = request.args.get('date') 
-        role = request.args.get('role') 
-
-        # 记录传入的请求参数
-        logger.info("Received parameters: date=%s, role=%s", date, role)
-
-        # 确定查询的时间区间
         if date:
+            logger.info(f"[DB QUERY] Calculating statistics for period: {date}")
             date_parts = date.split('-')
-            if len(date_parts) == 3:  
+            if len(date_parts) == 3:
                 year, month, day = map(int, date_parts)
                 start_date = datetime.datetime(year, month, day, 0, 0)
                 end_date = start_date + datetime.timedelta(days=1)
                 time_condition = "WHERE a.create_time >= %s AND a.create_time < %s"
                 params = (start_date, end_date)
-                logger.info("Date filter: Single day %s", date)
-            elif len(date_parts) == 2:  
+            elif len(date_parts) == 2:
                 year, month = map(int, date_parts)
                 start_date = datetime.datetime(year, month, 1, 0, 0)
                 end_date = (start_date + datetime.timedelta(days=32)).replace(day=1)
                 time_condition = "WHERE a.create_time >= %s AND a.create_time < %s"
                 params = (start_date, end_date)
-                logger.info("Date filter: Month %s", date)
-            elif len(date_parts) == 1:  
+            elif len(date_parts) == 1:
                 year = int(date_parts[0])
                 start_date = datetime.datetime(year, 1, 1, 0, 0)
                 end_date = datetime.datetime(year + 1, 1, 1, 0, 0)
                 time_condition = "WHERE a.create_time >= %s AND a.create_time < %s"
                 params = (start_date, end_date)
-                logger.info("Date filter: Year %s", date)
             else:
-                logger.error("Invalid date format: %s", date)
                 return jsonify({"error": "Invalid date format"}), 400
         else:
             # 如果没有传递 date 参数，则统计全部数据
             time_condition = ""
             params = ()
-            logger.info("No date filter provided. Fetching all data.")
+            logger.info("[DB QUERY] Calculating statistics for ALL time")
 
         # 构建基础查询 SQL，关联医生和科室
         sql = """
@@ -166,20 +170,13 @@ def get_appointment_statistics():
             {}
         """.format(time_condition)
 
-        # 记录执行的 SQL
-        logger.info("Executing SQL: %s with parameters %s", sql, params)
-
         cursor.execute(sql, params)
         rows = cursor.fetchall()
 
-        # 记录查询结果数量
-        logger.info("Fetched %d appointment records.", len(rows))
-
-        # 统计按小时分组
         hourly_stats = defaultdict(int)
         for row in rows:
             create_time = row['create_time']
-            if isinstance(create_time, str):  
+            if isinstance(create_time, str):
                 try:
                     create_time = datetime.datetime.strptime(create_time, '%Y-%m-%d %H:%M:%S.%f')
                 except ValueError as e:
@@ -191,23 +188,21 @@ def get_appointment_statistics():
         stats = [{"hour": hour, "count": count} for hour, count in sorted(hourly_stats.items())]
 
         # 记录统计数据
-        logger.info("Hourly statistics: %s", stats)
+        logger.info(f"[STATS RESULT] Hourly counts: {stats}")
+
+        # --- 3. 写入缓存 ---
+        redis_client.set(cache_key, json.dumps(stats), ex=600)
 
         return jsonify(stats)
 
     except Exception as e:
-        # 捕获并记录异常
-        logger.error("Error occurred while fetching appointment statistics: %s", str(e))
+        logger.error(f"[ERROR] Statistics calculation failed: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
     finally:
-        # 确保资源被关闭
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-        # 记录数据库连接关闭
-        logger.info("Database connection closed.")
+        if cursor: cursor.close()
+        if conn: conn.close()
+
 
 # 提交挂号
 @appointment_bp.route('/api/appointments', methods=['POST'])
@@ -222,7 +217,8 @@ def create_appointment():
         patient_id = data.get('patientId')
         dept_id = data.get('departmentId')
 
-        logger.info("Received data to create appointment: %s", data)
+        # 只记录关键意图，不打印包含描述等敏感信息的完整 JSON
+        logger.info(f"[ACTION] New appointment request - Patient: {patient_id}, Dept: {dept_id}")
 
         # 【高级查询】：合法性校验 - "有且仅有一个有效挂号"
         # 逻辑：查询该患者在该科室是否已经有一个状态为 'pending' 的挂号。如果 count > 0，则不允许再次挂号。
@@ -235,7 +231,7 @@ def create_appointment():
             (existing_count,) = cursor.fetchone()
 
             if existing_count > 0:
-                logger.warning("Patient ID %s already has a pending appointment in department %s", patient_id, dept_id)
+                logger.warning(f"[BLOCK] Duplicate appointment blocked for Patient {patient_id}")
                 return jsonify({"success": False, "message": "您在该科室已有待就诊的挂号，请勿重复挂号"}), 400
 
         # 【高级查询】：分组与聚合
@@ -255,10 +251,9 @@ def create_appointment():
             res = cursor.fetchone()
             if res:
                 doctor_id = res[0]
-                logger.info("Assigned doctor ID %s to the appointment", doctor_id)
+                logger.info(f"[AUTO ASSIGN] Assigned Doctor {doctor_id} to appointment")
             else:
-                # 该科室无医生
-                logger.error("No available doctors in department %s", dept_id)
+                logger.warning(f"[BLOCK] No doctors available in Dept {dept_id}")
                 return jsonify({"success": False, "message": "该科室暂无医生排班"}), 400
 
         # 执行插入
@@ -276,18 +271,22 @@ def create_appointment():
         ))
 
         conn.commit()
-        logger.info("Appointment created successfully with ID: %s", data.get('id'))
+
+        # 清除统计缓存
+        for key in redis_client.scan_iter("appt:stats:*"):
+            redis_client.delete(key)
+
+        logger.info(f"[SUCCESS] Appointment created. ID: {data.get('id')}")
         return jsonify({"success": True, "message": f"挂号成功，已分配医生ID: {doctor_id}"})
 
     except Exception as e:
         if conn: conn.rollback()
-        logger.error("Error creating appointment: %s", str(e))
+        logger.error(f"[ERROR] Create appointment failed: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
 
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
-        logger.info("Database connection closed.")
 
 
 # 更新挂号状态
@@ -302,26 +301,27 @@ def update_appointment_status(apt_id):
 
         # 获取新的状态
         new_status = data.get('status')
-
-        # 日志记录：收到的挂号更新请求
-        logger.info("Received update request for appointment ID: %s with new status: %s", apt_id, new_status)
+        # 清晰记录状态流转
+        logger.info(f"[ACTION] Update Appointment {apt_id} -> Status: {new_status}")
 
         sql = "UPDATE appointments SET status = %s WHERE id = %s"
         cursor.execute(sql, (data.get('status'), apt_id))
 
         conn.commit()
-        # 日志记录：成功更新挂号状态
-        logger.info("Successfully updated appointment ID: %s to status: %s", apt_id, new_status)
+
+        # 清除统计缓存
+        for key in redis_client.scan_iter("appt:stats:*"):
+            redis_client.delete(key)
 
         return jsonify({"success": True, "message": "挂号状态已更新"})
 
     except Exception as e:
         if conn: conn.rollback()
-        logger.error("Error updating appointment ID %s: %s", apt_id, str(e))
+        logger.error(f"[ERROR] Update status failed for {apt_id}: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
 
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
-        logger.info("Database connection closed for appointment ID: %s", apt_id)
+
 # --- END OF FILE app/api/appointment.py ---

@@ -1,12 +1,36 @@
 # --- START OF FILE app/api/patient.py ---
 from flask import Blueprint, request, jsonify
 from app.utils.db import get_db_connection
+from app.utils.redis_client import redis_client
 import logging
+import json
 from datetime import date
 from app.utils.common import format_date
 
 patient_bp = Blueprint('patient', __name__)
 logger = logging.getLogger(__name__)
+
+
+# --- 辅助函数：清除缓存 ---
+def clear_patient_cache():
+    """
+    当患者数据发生变更(增删改)时，清除相关缓存
+    """
+    try:
+        keys_to_delete = [
+            'patients:stats:count',
+            'patients:stats:gender',
+            'patients:stats:age'
+        ]
+        redis_client.delete(*keys_to_delete)
+
+        for key in redis_client.scan_iter("patients:list:*"):
+            redis_client.delete(key)
+
+        logger.info("[CACHE CLEAR] Patient related cache cleared.")
+    except Exception as e:
+        logger.error(f"[ERROR] Failed to clear patient cache: {e}")
+
 
 # 获取所有患者信息
 @patient_bp.route('/api/patients', methods=['GET'])
@@ -14,16 +38,24 @@ def get_patients():
     conn = None
     cursor = None
     try:
-        # 记录请求日志
-        query = request.args.get('query')  
-        limit = request.args.get('limit',type=int)  
-        offset = request.args.get('offset',type=int) 
+        query = request.args.get('query', '')
+        limit = request.args.get('limit', type=int)
+        offset = request.args.get('offset', type=int)
 
-        # 根据 query 参数决定日志内容
-        if query:
-            logger.info(f"Request to get patients with query: {query}.")
-        else:
-            logger.info("Request to get all patients.")
+        # --- 1. 尝试从 Redis 获取缓存 ---
+        cache_key = f"patients:list:{query}:{limit or 'all'}:{offset or 0}"
+
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            try:
+                logger.info(f"[CACHE HIT] Patient list for key: {cache_key}")
+                return jsonify(json.loads(cached_data))
+            except Exception as e:
+                logger.error(f"[ERROR] Redis json parse error: {e}")
+                redis_client.delete(cache_key)
+
+        # --- 2. 缓存未命中，查数据库 ---
+        logger.info(f"[DB QUERY] Fetching patients (Query: '{query}', Limit: {limit}, Offset: {offset})")
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
@@ -49,8 +81,8 @@ def get_patients():
         # 如果有 query 参数，添加过滤条件
         params = ()
         if query:
-            sql += " WHERE p.id = %s"
-            params = (query,)
+            sql += " WHERE p.id = %s OR p.name LIKE %s"
+            params = (query, f"%{query}%")
 
         # 只有在提供 limit 和 offset 时才加上分页限制
         if limit :
@@ -74,20 +106,19 @@ def get_patients():
                 "isVip": bool(row['is_vip'])
             })
 
-        # 记录查询日志
-        logger.info("Fetched %d patients from the database.", len(data))
+        logger.info(f"[DB RESULT] Fetched {len(data)} patients.")
+
+        # --- 3. 写入 Redis 缓存 ---
+        redis_client.set(cache_key, json.dumps(data), ex=30)
 
         return jsonify(data)
     except Exception as e:
-        # 记录异常日志
-        logger.error("Error occurred while fetching patients: %s", str(e))
+        logger.error(f"[ERROR] Fetching patients failed: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-        logger.info("Database connection closed.")
+        if cursor: cursor.close()
+        if conn: conn.close()
+
 
 # 新增/注册患者
 @patient_bp.route('/api/patients', methods=['POST'])
@@ -96,8 +127,8 @@ def create_patient():
     conn = None
     cursor = None
     try:
-        # 记录请求日志
-        logger.info("Request to create a new patient with ID: %s", data.get('id'))
+        p_id = data.get('id')
+        logger.info(f"[ACTION] Registering new patient: {p_id}")
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -105,9 +136,9 @@ def create_patient():
         # 【高级查询】：存在性校验
         # 只有当该 ID 不存在时才插入
         check_sql = "SELECT id FROM patients WHERE id = %s"
-        cursor.execute(check_sql, (data.get('id'),))
+        cursor.execute(check_sql, (p_id,))
         if cursor.fetchone():
-            logger.warning("Patient ID %s already exists. Registration failed.", data.get('id'))
+            logger.warning(f"[BLOCK] Patient ID {p_id} already exists.")
             return jsonify({"success": False, "message": "ID已存在，请勿重复注册"}), 400
 
         # 映射 JSON 字段 -> 数据库字段
@@ -117,7 +148,7 @@ def create_patient():
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
         cursor.execute(sql, (
-            data.get('id'),
+            p_id,
             data.get('name'),
             data.get('password', '123456'),  # 默认密码处理
             data.get('gender'),
@@ -128,26 +159,27 @@ def create_patient():
         ))
 
         conn.commit()
-        # 记录成功日志
-        logger.info("Patient ID %s registered successfully.", data.get('id'))
+
+        clear_patient_cache()
+
+        logger.info(f"[SUCCESS] Patient {p_id} registered.")
         return jsonify({"success": True, "message": "患者注册成功"})
 
     except Exception as e:
         if conn: conn.rollback()
-        # 记录异常日志
-        logger.error("Error creating patient: %s", str(e))
+        logger.error(f"[ERROR] Creating patient failed: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
 
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
-        logger.info("Database connection closed.")
+
 
 # 更新患者信息
 @patient_bp.route('/api/patients/<string:p_id>', methods=['PUT'])
 def update_patient(p_id):
     data = request.json
-    logger.info("Received data to update patient: %s", data)
+    logger.info(f"[ACTION] Updating patient info: {p_id}")
     conn = None
     cursor = None
     try:
@@ -169,20 +201,21 @@ def update_patient(p_id):
         ))
 
         conn.commit()
-        # 记录成功日志
-        logger.info("Patient ID %s information updated successfully.", p_id)
-        return jsonify({"success": True, "message": "患者信息更新成功，挂号信息已更新"})
+
+        clear_patient_cache()
+
+        logger.info(f"[SUCCESS] Patient {p_id} updated.")
+        return jsonify({"success": True, "message": "患者信息更新成功"})
 
     except Exception as e:
         if conn: conn.rollback()
-        # 记录异常日志
-        logger.error("Error updating patient ID %s: %s", p_id, str(e))
+        logger.error(f"[ERROR] Updating patient {p_id} failed: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
 
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
-        logger.info("Database connection closed.")
+
 
 # 删除患者
 @patient_bp.route('/api/patients/<string:patient_id>', methods=['DELETE'])
@@ -190,7 +223,7 @@ def delete_patient(patient_id):
     conn = None
     cursor = None
     try:
-        logger.info("Request to delete patient with ID: %s", patient_id)
+        logger.info(f"[ACTION] Deleting patient: {patient_id}")
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -199,46 +232,50 @@ def delete_patient(patient_id):
 
         # 删除该患者的挂号记录
         cursor.execute("DELETE FROM appointments WHERE patient_id = %s", (patient_id,))
-        logger.info("Deleted %d appointment records for patient %s.", cursor.rowcount, patient_id)
+        deleted_appts = cursor.rowcount
 
         # 删除该患者的病历记录 (这将通过级联删除自动删除相关的处方明细)
         cursor.execute("DELETE FROM medical_records WHERE patient_id = %s", (patient_id,))
-        logger.info("Deleted %d medical records for patient %s (and cascaded %d prescription details).", 
-                     cursor.rowcount, patient_id, cursor.rowcount) 
+        deleted_records = cursor.rowcount
 
         # 删除患者本身
         cursor.execute("DELETE FROM patients WHERE id = %s", (patient_id,))
         if cursor.rowcount == 0:
             conn.rollback()
-            logger.warning("Patient with ID %s not found for deletion.", patient_id)
+            logger.warning(f"[BLOCK] Patient {patient_id} not found for deletion.")
             return jsonify({"success": False, "message": "患者不存在或已删除。"}), 404
 
         conn.commit()
-        logger.info("Patient with ID %s and all associated data deleted successfully.", patient_id)
+
+        logger.info(
+            f"[SUCCESS] Patient {patient_id} deleted (Cascaded: {deleted_appts} Appts, {deleted_records} Records).")
+
+        clear_patient_cache()
+
         return jsonify({"success": True, "message": "患者及其所有相关数据删除成功。"}), 200
 
     except Exception as e:
-        if conn:
-            conn.rollback()
-        logger.error("Error deleting patient %s: %s", patient_id, str(e))
+        if conn: conn.rollback()
+        logger.error(f"[ERROR] Deleting patient {patient_id} failed: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-        logger.info("Database connection closed for patient deletion.")
+        if cursor: cursor.close()
+        if conn: conn.close()
 
 
 # 查询患者总数
 @patient_bp.route('/api/patients/count', methods=['GET'])
 def get_patient_count():
-    conn = None
-    cursor = None
     try:
-        # 记录请求日志
-        logger.info("Request to get total number of patients.")
+        # --- 1. 查缓存 ---
+        cache_key = "patients:stats:count"
+        cached_val = redis_client.get(cache_key)
+        if cached_val:
+            logger.info(f"[CACHE HIT] Patient count: {cached_val}")
+            return jsonify({"total_patients": int(cached_val)})
 
+        # --- 2. 查库 ---
+        logger.info("[DB QUERY] Counting total patients")
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
@@ -254,25 +291,26 @@ def get_patient_count():
         return jsonify({"total_patients": total_patients})
 
     except Exception as e:
-        logger.error("Error occurred while fetching total number of patients: %s", str(e))
+        logger.error(f"[ERROR] Fetching patient count failed: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-        logger.info("Database connection closed.")
+        if 'cursor' in locals() and cursor: cursor.close()
+        if 'conn' in locals() and conn: conn.close()
+
 
 # 患者性别比例统计
 @patient_bp.route('/api/patients/gender_ratio', methods=['GET'])
 def get_gender_ratio():
-    conn = None
-    cursor = None
     try:
-        # 记录请求日志
-        logger.info("Request to get patient gender ratio.")
+        # --- 1. 查缓存 ---
+        cache_key = "patients:stats:gender"
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            logger.info("[CACHE HIT] Gender ratio statistics")
+            return jsonify(json.loads(cached_data))
 
+        # --- 2. 查库 ---
+        logger.info("[DB QUERY] Calculating gender ratio")
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
@@ -284,45 +322,43 @@ def get_gender_ratio():
         """)
         rows = cursor.fetchall()
 
-        # 如果没有查询结果，返回空的性别比例
-        if not rows:
-            return jsonify({"male": 0, "female": 0, "other": 0})
-
-        # 构建性别比例统计
         gender_ratio = {"male": 0, "female": 0, "other": 0}
-        for row in rows:
-            gender = row['gender']
-            if gender == '男':
-                gender_ratio["male"] = row['count']
-            elif gender == '女':
-                gender_ratio["female"] = row['count']
-            else:
-                gender_ratio["other"] = row['count']
+        if rows:
+            for row in rows:
+                gender = row['gender']
+                if gender == '男':
+                    gender_ratio["male"] = row['count']
+                elif gender == '女':
+                    gender_ratio["female"] = row['count']
+                else:
+                    gender_ratio["other"] = row['count']
 
-        # 返回性别比例
-        logging.info("gender_ratio: %s",gender_ratio)
+        # --- 3. 写缓存 ---
+        redis_client.set(cache_key, json.dumps(gender_ratio), ex=3600)
+
         return jsonify(gender_ratio)
 
     except Exception as e:
-        logger.error("Error occurred while fetching patient gender ratio: %s", str(e))
+        logger.error(f"[ERROR] Fetching gender ratio failed: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-        logger.info("Database connection closed.")
+        if 'cursor' in locals() and cursor: cursor.close()
+        if 'conn' in locals() and conn: conn.close()
+
 
 # 患者年龄比例统计
 @patient_bp.route('/api/patients/age_ratio', methods=['GET'])
 def get_age_ratio():
-    conn = None
-    cursor = None
     try:
-        # 记录请求日志
-        logger.info("Request to get patient age ratio.")
+        # --- 1. 查缓存 ---
+        cache_key = "patients:stats:age"
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            logger.info("[CACHE HIT] Age ratio statistics")
+            return jsonify(json.loads(cached_data))
 
+        # --- 2. 查库 ---
+        logger.info("[DB QUERY] Calculating age ratio")
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
@@ -342,30 +378,21 @@ def get_age_ratio():
         """)
         rows = cursor.fetchall()
 
-        # 如果没有查询结果，返回空的年龄比例
-        if not rows:
-            return jsonify({"青少年": 0, "青年": 0, "中年": 0, "老年": 0})
-
-        # 构建年龄比例统计
         age_ratio = {"青少年": 0, "青年": 0, "中年": 0, "老年": 0}
-        for row in rows:
-            age_group = row['age_group']
-            age_ratio[age_group] = row['count']
+        if rows:
+            for row in rows:
+                age_ratio[row['age_group']] = row['count']
 
-        # 返回年龄比例
-        logging.info("age_ratio: %s",age_ratio)
+        # --- 3. 写缓存 ---
+        redis_client.set(cache_key, json.dumps(age_ratio), ex=3600)
+
         return jsonify(age_ratio)
 
     except Exception as e:
-        logger.error("Error occurred while fetching patient age ratio: %s", str(e))
+        logger.error(f"[ERROR] Fetching age ratio failed: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-        logger.info("Database connection closed.")
-
+        if 'cursor' in locals() and cursor: cursor.close()
+        if 'conn' in locals() and conn: conn.close()
 
 # --- END OF FILE app/api/patient.py ---

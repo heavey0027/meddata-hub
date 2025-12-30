@@ -15,48 +15,61 @@ def format_date(d):
 def check_timestamp():
     """校验时间戳"""
     timestamp = request.args.get('_t')
-    logger = logging.getLogger(__name__)  # 使用模块级日志
 
     if not timestamp:
-        logger.warning("Timestamp is missing")
+        logger.warning("[SECURITY] Blocked request: Missing timestamp (_t)")
         return "Timestamp is required", 400
 
     try:
         timestamp = int(timestamp)
     except ValueError:
-        logger.error(f"Invalid timestamp format: {timestamp}")
+        logger.error(f"[SECURITY] Invalid timestamp format: {timestamp}")
         return "Invalid timestamp", 400
 
     current_timestamp = int(time.time() * 1000)  # 当前时间戳（毫秒）
     max_allowed_diff = 5 * 60 * 1000  # 最大允许差异：5分钟
 
-    if abs(current_timestamp - timestamp) > max_allowed_diff:
-        logger.warning(f"Timestamp out of range: {abs(current_timestamp - timestamp)}ms")
+    time_diff = abs(current_timestamp - timestamp)
+    if time_diff > max_allowed_diff:
+        logger.warning(f"[SECURITY] Timestamp out of range. Diff: {time_diff}ms")
         return "Timestamp is too old or too far in the future", 400
 
     # 校验通过
-    logger.info("Timestamp is valid")
-    return None  # 校验通过
+    return None
 
 def verify_jwt():
-    token = request.headers.get('Authorization')  # 获取 Authorization 头
+    auth_header = request.headers.get('Authorization')
 
-    if not token:
-        logging.warning("Token is missing!")
+    if not auth_header:
+        logger.warning("[AUTH] Blocked: Missing Authorization header")
         return jsonify({'message': 'Token is missing!'}), 401
 
     try:
-        token = token.split(' ')[1]  # 提取 Bearer token
+        # 健壮性处理：确保格式为 "Bearer <token>"
+        parts = auth_header.split()
+        if len(parts) != 2 or parts[0].lower() != 'bearer':
+            logger.warning("[AUTH] Blocked: Invalid Authorization header format")
+            return jsonify({'message': 'Invalid header format!'}), 401
+        
+        token = parts[1]
         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        
+        # 认证成功，记录用户身份而非 Token 本身
+        # logger.info(f"[AUTH] Verified User: {payload.get('user_id')} (Role: {payload.get('role')})")
         return payload  # 返回解码后的 payload
 
     except jwt.ExpiredSignatureError:
-        # 如果 JWT 已经过期，记录日志并返回 401 错误
-        logger.warning("JWT expired for token: %s", token)  # 记录日志
+        #  如果 JWT 已经过期，记录日志并返回 401 错误
+        logger.warning("[AUTH] Blocked: Token has expired")
         return jsonify({'message': 'Token has expired!'}), 401
 
     except jwt.InvalidTokenError:
         # 如果 JWT 无效，记录日志并返回 401 错误
-        logger.warning("Invalid JWT token: %s", token)  # 记录日志
+        logger.warning("[AUTH] Blocked: Invalid token signature")
         return jsonify({'message': 'Invalid token!'}), 401
+    
+    except Exception as e:
+        logger.error(f"[AUTH] Unexpected error: {str(e)}")
+        return jsonify({'message': 'Authentication failed!'}), 500
 
+# --- END OF FILE app/utils/common.py ---

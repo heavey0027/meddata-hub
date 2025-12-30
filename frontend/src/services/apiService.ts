@@ -1,5 +1,6 @@
 import { Patient, MedicalRecord, Doctor, Department, Medicine, PrescriptionDetail, DashboardStats, PatientDemographics, Appointment, UserRole, MonthlyStats, MultimodalData } from '../types';
 import { addLog } from './logger';
+import { logout } from './authService' ;
 
 // 配置后端 API 地址。
 const API_BASE_URL = '/api';
@@ -66,7 +67,7 @@ async function fetchFromApi<T>(endpoint: string): Promise<T> {
     if (!response.ok) {
       if (response.status === 401) {
         addLog('ERROR', 'AUTH', 'Token失效或未登录', endpoint);
-        // 可选：在这里触发登出逻辑
+        logout();
       }
       throw new Error(`HTTP ${response.status} - ${response.statusText}`);
     }
