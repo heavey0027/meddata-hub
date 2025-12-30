@@ -1,18 +1,19 @@
 
 # Docker 容器化架构详解 (Infrastructure as Code)
 
-本文档详细解析了 MedData Hub 项目的 Docker 容器化实现方案。本项目采用 **Docker Compose** 进行多容器编排，实现了前端、后端与数据库的解耦部署与一键拉起。
+本文档详细解析了 MedData Hub 项目的 Docker 容器化实现方案。本项目采用 **Docker Compose** 进行多容器编排，实现了前端、后端、数据库与缓存层的解耦部署与一键拉起。
 
 ---
 
 ## 1. 整体架构 (Architecture)
 
-系统由三个独立容器组成，通过 Docker 内部网络 (`meddata-net`) 进行通信：
+系统由四个独立容器组成，通过 Docker 内部网络 (`meddata-net`) 进行通信：
 
 | 服务名称 (Service) | 镜像 (Image) | 内部端口 | 宿主机端口 | 职责 |
 | :--- | :--- | :--- | :--- | :--- |
 | **frontend** | `nginx:alpine` | 80 | **1234** | 静态资源托管、反向代理 (网关) |
 | **backend** | `python:3.9-slim` | 5000 | 5000 (可选) | API 服务、业务逻辑处理 |
+| **redis** | `redis:7-alpine` | 6379 | 6379 (可选) | 高性能缓存、Session 存储 |
 | **db** | `mysql:8.0` | 3306 | - | 数据持久化存储 |
 
 ### 流量拓扑图
@@ -23,9 +24,11 @@ graph LR
     subgraph Docker_Network [meddata-net]
         Nginx -- /api/* --> Backend[Backend-Gunicorn]
         Backend -- TCP :3306 --> MySQL[(Database)]
+        Backend -- TCP :6379 --> Redis[(Redis Cache)]
     end
     
-    Backend -.->|Check Ready| MySQL
+    Backend -.->|Wait For| MySQL
+    Backend -.->|Wait For| Redis
 ```
 
 ---
@@ -38,9 +41,14 @@ graph LR
 *   **数据库服务 (`db`)**:
     *   **持久化**: 使用 `volumes` 将 MySQL 数据挂载到本地 `db_data`，防止容器删除后数据丢失。
     *   **自动建表**: 将 `meddata_hub.sql` 映射到 `/docker-entrypoint-initdb.d/`，容器首次启动时自动执行 SQL。
+*   **缓存服务 (`redis`)**:
+    *   **持久化**: 使用 `volumes` 将 Redis 数据挂载到本地 `redis_data`，确保重启后缓存不丢失（可选配置）。
+    *   **网络隔离**: 仅在 `meddata-net` 内部暴露服务，保障安全。
 *   **后端服务 (`backend`)**:
-    *   **依赖等待**: `depends_on: db` 确保数据库容器先启动。
-    *   **环境变量**: 通过 `environment` 注入 `DB_HOST=db`，覆盖代码中的 `localhost` 默认值，实现环境解耦。
+    *   **依赖等待**: `depends_on: [db, redis]` 确保基础设置服务先启动。
+    *   **环境变量**: 
+        *   `DB_HOST=db`: 指向 MySQL 容器名。
+        *   `REDIS_HOST=redis`: 指向 Redis 容器名。
 *   **前端服务 (`frontend`)**:
     *   **构建上下文**: 指定使用 `Dockerfile` (原文件名) 进行多阶段构建。
     *   **端口映射**: `80:1234` 将容器 Web 服务暴露给宿主机。
@@ -96,11 +104,13 @@ server {
 ```python
 # 优先读环境变量 (Docker模式)，读不到则用默认值 (本地模式)
 "host": os.getenv("DB_HOST", "localhost")
+redis_host = os.getenv('REDIS_HOST', 'localhost')
 ```
 
 | 变量名 | 本地默认值 | Docker 值 | 作用 |
 | :--- | :--- | :--- | :--- |
 | `DB_HOST` | `localhost` | `db` | 数据库主机地址 |
+| `REDIS_HOST` | `localhost` | `redis` | Redis 主机地址 |
 | `DB_USER` | `root` | `root` | 数据库用户名 |
 
 ---
@@ -112,6 +122,7 @@ server {
 | **前端服务器** | Vite Dev Server (HMR) | Nginx (Static) |
 | **API 转发** | Vite Proxy (`vite.config.ts`) | Nginx Reverse Proxy (`nginx.conf`) |
 | **后端服务器** | Flask Development Server | Gunicorn (WSGI, 多 Worker) |
+| **缓存服务** | 本地 Redis 进程 | Redis 容器 |
 | **API 地址** | `/api` (转发至 localhost:5000) | `/api` (转发至 backend:5000) |
 
 ---
@@ -131,6 +142,9 @@ docker compose logs -f
 # 4. 手动执行容器内命令 (如插入数据)
 docker exec -it meddata-api python insert_data_python/insert_data.py
 
-# 5. 彻底重置 (删除容器与数据卷)
+# 5. 清理 Redis 缓存
+docker exec -it meddata-redis redis-cli FLUSHALL
+
+# 6. 彻底重置 (删除容器与数据卷)
 docker compose down -v
 ```
