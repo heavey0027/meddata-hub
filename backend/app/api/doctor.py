@@ -1,10 +1,14 @@
 # --- START OF FILE app/api/doctor.py ---
 from flask import Blueprint, request, jsonify
 from app.utils.db import get_db_connection
+from app.utils.redis_client import get_redis_client
 import logging
+import json
 
 doctor_bp = Blueprint('doctor', __name__)
 logger = logging.getLogger(__name__)
+
+redis_client = get_redis_client()
 
 # 获取所有医生信息
 @doctor_bp.route('/api/doctors', methods=['GET'])
@@ -65,10 +69,29 @@ def get_doctor_detail(doctor_id):
     cursor = None
     try:
         logger.info("Request to get doctor detail: %s", doctor_id)
+
+        # 1. 尝试查询缓存
+        cache_key = f"doctor:{doctor_id}"
+        cached_data = redis_client.get(cache_key)
+
+        if cached_data:
+            logger.info(f"Cache hit for doctor ID: {doctor_id}")
+            try:
+                # 只有反序列化成功才返回
+                data_dict = json.loads(cached_data)
+                return jsonify(data_dict), 200
+            except Exception as e:
+                # 如果 Redis 数据格式坏了（比如存成了单引号字符串），记录日志并继续查库
+                logger.error(f"Redis data parse error: {e}")
+                redis_client.delete(cache_key)
+                logger.info(f"Deleted corrupted cache key: {cache_key}")
+
+        # 2. 缓存未命中或解析失败，查询数据库
+        logger.info(f"Cache miss for doctor ID: {doctor_id}, querying database")
+
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # 同时返回所属科室名称
         sql = """
             SELECT d.id, d.name, d.title, d.specialty, d.phone, d.department_id,
                    dept.name AS department_name
@@ -78,10 +101,12 @@ def get_doctor_detail(doctor_id):
         """
         cursor.execute(sql, (doctor_id,))
         row = cursor.fetchone()
+
         if not row:
             logger.warning("Doctor %s not found.", doctor_id)
             return jsonify({"success": False, "message": "医生不存在"}), 404
 
+        # 构造返回数据
         data = {
             "id": row['id'],
             "name": row['name'],
@@ -91,16 +116,25 @@ def get_doctor_detail(doctor_id):
             "departmentId": row['department_id'],
             "departmentName": row.get('department_name')
         }
-        return jsonify(data)
+
+        # 3. 写入缓存 (json.dumps(data))
+        try:
+
+            redis_client.set(cache_key, json.dumps(data), ex=3600)
+            logger.info(f"Cached data for doctor ID: {doctor_id}")
+        except Exception as cache_e:
+            # 缓存写入失败不应该影响主流程返回，记录个错误日志即可
+            logger.error(f"Failed to write cache for doctor {doctor_id}: {cache_e}")
+
+        return jsonify(data), 200
 
     except Exception as e:
         logger.error("Error fetching doctor %s: %s", doctor_id, str(e))
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"success": False, "message": str(e)}), 500
 
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
-        logger.info("Database connection closed.")
 
 # 修改医生信息
 @doctor_bp.route('/api/doctors/<string:doctor_id>', methods=['PUT'])
@@ -152,6 +186,13 @@ def update_doctor_detail(doctor_id):
 
         conn.commit()
         logger.info("Doctor %s updated successfully.", doctor_id)
+
+        # 删除 Redis 中缓存的医生数据
+        cache_key = f"doctor:{doctor_id}"
+        redis_client.delete(cache_key)  # 删除缓存
+
+        logger.info(f"Cache for doctor ID {doctor_id} deleted successfully.")
+
         return jsonify({"success": True, "message": "医生信息更新成功"}), 200
 
     except Exception as e:

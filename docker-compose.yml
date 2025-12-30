@@ -1,6 +1,19 @@
 version: '3.8'
 
 services:
+  # --- 新增 Redis 服务 ---
+  redis:
+    image: redis:7-alpine
+    container_name: meddata-redis
+    #在本地通过 Desktop Manager 查看 Redis 数据，暴露端口
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - meddata-net
+    restart: always
+
   # 数据库服务
   db:
     image: mysql:8.0
@@ -14,6 +27,7 @@ services:
       - ./backend/meddata_hub.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - meddata-net
+    restart: always
 
   # 后端服务
   backend:
@@ -21,15 +35,22 @@ services:
     container_name: meddata-api
     depends_on:
       - db
+      - redis # 确保 Redis 启动后再启动后端
     environment:
-      # 注意：DB_HOST 必须写 db 服务名，而不是 localhost
+      # MySQL 配置
       DB_HOST: db
       DB_USER: root
       DB_PASSWORD: rootpassword
       DB_NAME: meddata_hub
+      
+      # 在 Docker 网络内部，直接使用服务名 'redis' 作为主机名
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      
       GOOGLE_API_KEY: ${GOOGLE_API_KEY} 
     networks:
       - meddata-net
+    restart: always
 
   # 前端服务
   frontend:
@@ -43,9 +64,11 @@ services:
       - backend
     networks:
       - meddata-net
+    restart: always
 
 volumes:
   db_data:
+  redis_data: # 新增 Redis 数据卷
 
 networks:
   meddata-net:

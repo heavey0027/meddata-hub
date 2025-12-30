@@ -5,6 +5,7 @@ import jwt
 from flask import Flask, request, jsonify
 
 SECRET_KEY = 'ARE_YOU_LJF_YES_I_AM_AND_I_LOVE_DATABASE_JWT_SECRET'  # 用于加密JWT的密钥
+logger = logging.getLogger(__name__)
 
 def format_date(d):
     """辅助函数：将数据库的一行数据转换为符合驼峰命名的字典"""
@@ -15,9 +16,6 @@ def check_timestamp():
     """校验时间戳"""
     timestamp = request.args.get('_t')
     logger = logging.getLogger(__name__)  # 使用模块级日志
-
-    # 记录收到的时间戳
-    logger.info(f"Received timestamp: {timestamp}")
 
     if not timestamp:
         logger.warning("Timestamp is missing")
@@ -31,10 +29,6 @@ def check_timestamp():
 
     current_timestamp = int(time.time() * 1000)  # 当前时间戳（毫秒）
     max_allowed_diff = 5 * 60 * 1000  # 最大允许差异：5分钟
-
-    # 记录校验过程
-    logger.info(f"Current timestamp: {current_timestamp}")
-    logger.info(f"Max allowed difference: {max_allowed_diff}")
 
     if abs(current_timestamp - timestamp) > max_allowed_diff:
         logger.warning(f"Timestamp out of range: {abs(current_timestamp - timestamp)}ms")
