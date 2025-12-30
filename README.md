@@ -14,6 +14,7 @@
   <img src="https://img.shields.io/badge/Flask-2.x-000000?logo=flask&logoColor=white" />
   <img src="https://img.shields.io/badge/JWT-Auth-000000?logo=json-web-tokens&logoColor=white" />
   <img src="https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white" />
+  <img src="https://img.shields.io/badge/Redis-7.0-DC382D?logo=redis&logoColor=white" />
   <img src="https://img.shields.io/badge/Docker-Enabled-2496ED?logo=docker&logoColor=white" />
   <img src="https://img.shields.io/badge/License-MIT-green" />
 </p>
@@ -37,13 +38,14 @@
 ### 后端架构 (Backend)
 *   **模块化单体 (Modular Monolith)**: 基于 Flask Blueprint 实现业务领域（Auth, Patient, Doctor 等）的物理隔离。
 *   **无状态认证**: 采用 **JWT** 标准进行身份验证，配合自定义装饰器实现接口级的权限校验。
+*   **高性能缓存**: 集成 **Redis** 缓存机制，优化医生详情、科室列表等高频查询接口的响应速度，减轻数据库压力。
 *   **复杂业务逻辑**:
     *   **事务脚本模式**: 确保病历写入与库存扣减的原子性。
     *   **高级 SQL 查询**: 实现相关子查询统计、双重 `NOT EXISTS` 筛选 VIP 患者等复杂逻辑。
 *   **RESTful API**: 清晰的接口定义，屏蔽底层复杂的数据库表结构。
 
 ### 部署与运维 (Deployment)
-*   **Docker 容器化**: 提供完整的 `docker-compose` 配置，一键拉起 Frontend (Nginx), Backend (Gunicorn), Database (MySQL)。
+*   **Docker 容器化**: 提供完整的 `docker-compose` 配置，一键拉起 Frontend (Nginx), Backend (Gunicorn), Database (MySQL), **Cache (Redis)**。
 *   **环境适配**: 支持本地开发与容器化部署无缝切换，内置 Nginx 反向代理解决跨域问题。
 
 ---
@@ -117,9 +119,10 @@ docker exec -it meddata-api python insert_data_python/insert_multimodal.py
 *   Node.js (v18+) & Yarn
 *   Python (3.8+)
 *   MySQL (8.0+)
+*   Redis (7.0+)
 
 #### 2. 后端启动 (Backend)
-确保本地 MySQL 服务已启动，并创建好 `meddata_hub` 数据库。
+确保本地 MySQL 和 Redis 服务已启动，并创建好 `meddata_hub` 数据库。
 
 ```bash
 cd backend
@@ -154,6 +157,7 @@ yarn dev
 *   **Framework**: Python Flask (Blueprints, App Factory)
 *   **Security**: PyJWT (JSON Web Token Authentication)
 *   **Database**: MySQL (mysql-connector-python)
+*   **Cache**: Redis (redis-py)
 *   **Patterns**: Transaction Script, Singleton (DB Pool), Facade
 *   **Utilities**: Flask-CORS, Python Logging
 
