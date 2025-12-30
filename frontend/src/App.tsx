@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FileImage, MessageSquareText, Menu, X, Database, Layers, PieChart as PieChartIcon, ScrollText, CalendarPlus, History, UserCheck, LogOut, Clock, Calendar, DatabaseZap } from 'lucide-react';
+import { LayoutDashboard, Users, FileImage, MessageSquareText, Menu, X, Database, Layers, PieChart as PieChartIcon, ScrollText, CalendarPlus, History, UserCheck, LogOut, Clock, Calendar, DatabaseZap, AlertTriangle } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { PatientList } from './components/PatientList';
 import { RadiologyAI } from './components/RadiologyAI';
@@ -21,6 +20,58 @@ import { getCurrentUser, logout, isDebugMode } from './services/authService';
 import { UserRole } from './types';
 
 const SESSION_KEY = process.env.REACT_APP_SESSION_KEY;
+
+// --- 新增：全局 401 弹窗组件 ---
+const GlobalAuthModal = () => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      // 只有当前不在登录页时才弹窗，避免死循环
+      if (!window.location.hash.includes('/login')) {
+        setIsOpen(true);
+      }
+    };
+
+    window.addEventListener('auth-session-expired', handleAuthExpired);
+    return () => window.removeEventListener('auth-session-expired', handleAuthExpired);
+  }, []);
+
+  const handleConfirm = () => {
+    // 1. 清理本地存储
+    logout();
+    // 2. 关闭弹窗
+    setIsOpen(false);
+    // 3. 强制重定向到登录页
+    window.location.href = '#/login';
+    //刷新页面以确保状态完全重置
+    window.location.reload();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-white rounded-lg shadow-2xl p-6 max-w-sm w-full mx-4 animate-in fade-in zoom-in duration-200">
+        <div className="flex flex-col items-center text-center">
+          <div className="h-12 w-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mb-4">
+            <AlertTriangle className="h-6 w-6" />
+          </div>
+          <h3 className="text-lg font-bold text-gray-900 mb-2">会话已过期</h3>
+          <p className="text-gray-500 mb-6 text-sm">
+            您的登录状态已失效（Token 过期或未登录）。<br/>为了您的账户安全，请重新登录。
+          </p>
+          <button 
+            onClick={handleConfirm}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
+            确定并跳转登录
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const SidebarLink = ({ to, icon, label }: { to: string, icon: React.ReactNode, label: string }) => (
   <NavLink 
@@ -81,7 +132,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     // 修改：检测到有 token (JWT) 后再检查后端健康状态
     const sessionStr = localStorage.getItem(SESSION_KEY);
-    const session = JSON.parse(sessionStr);
+    const session = sessionStr ? JSON.parse(sessionStr) : null;
 
     if (session?.token) {
       checkBackendHealth().then(isConnected => {
@@ -247,38 +298,41 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
 const App: React.FC = () => {
   return (
-    <Router>
-      <Layout>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          
-          {/* Admin Routes */}
-          <Route path="/" element={<RequireAuth roles={['admin']}><Dashboard /></RequireAuth>} />
-          <Route path="/stats" element={<RequireAuth roles={['admin']}><PatientStats /></RequireAuth>} />
-          <Route path="/patients" element={<RequireAuth roles={['admin']}><PatientList /></RequireAuth>} />
-          <Route path="/logs" element={<RequireAuth><SystemLogs /></RequireAuth>} />
+    <>
+      <GlobalAuthModal />
+      <Router>
+        <Layout>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            
+            {/* Admin Routes */}
+            <Route path="/" element={<RequireAuth roles={['admin']}><Dashboard /></RequireAuth>} />
+            <Route path="/stats" element={<RequireAuth roles={['admin']}><PatientStats /></RequireAuth>} />
+            <Route path="/patients" element={<RequireAuth roles={['admin']}><PatientList /></RequireAuth>} />
+            <Route path="/logs" element={<RequireAuth><SystemLogs /></RequireAuth>} />
 
-          {/* Shared Routes (Resources accessible by Admin & Doctor) */}
-          <Route path="/resources" element={<RequireAuth roles={['admin', 'doctor']}><Resources /></RequireAuth>} />
-          <Route path="/multimodal" element={<RequireAuth roles={['admin', 'doctor']}><MultimodalManager /></RequireAuth>} />
-          
-          {/* Patient Routes */}
-          <Route path="/appointment" element={<RequireAuth roles={['patient', 'admin']}><AppointmentHall /></RequireAuth>} />
-          
-          {/* Restrict My Appointments to Patient only */}
-          <Route path="/my-appointments" element={<RequireAuth roles={['patient']}><MyAppointments /></RequireAuth>} />
-          
-          <Route path="/history" element={<RequireAuth roles={['patient', 'admin', 'doctor']}><PatientHistory /></RequireAuth>} />
-          
-          {/* Doctor Routes */}
-          <Route path="/consultation" element={<RequireAuth roles={['doctor', 'admin']}><DoctorConsultation /></RequireAuth>} />
-          <Route path="/radiology" element={<RequireAuth roles={['doctor', 'admin']}><RadiologyAI /></RequireAuth>} />
+            {/* Shared Routes (Resources accessible by Admin & Doctor) */}
+            <Route path="/resources" element={<RequireAuth roles={['admin', 'doctor']}><Resources /></RequireAuth>} />
+            <Route path="/multimodal" element={<RequireAuth roles={['admin', 'doctor']}><MultimodalManager /></RequireAuth>} />
+            
+            {/* Patient Routes */}
+            <Route path="/appointment" element={<RequireAuth roles={['patient', 'admin']}><AppointmentHall /></RequireAuth>} />
+            
+            {/* Restrict My Appointments to Patient only */}
+            <Route path="/my-appointments" element={<RequireAuth roles={['patient']}><MyAppointments /></RequireAuth>} />
+            
+            <Route path="/history" element={<RequireAuth roles={['patient', 'admin', 'doctor']}><PatientHistory /></RequireAuth>} />
+            
+            {/* Doctor Routes */}
+            <Route path="/consultation" element={<RequireAuth roles={['doctor', 'admin']}><DoctorConsultation /></RequireAuth>} />
+            <Route path="/radiology" element={<RequireAuth roles={['doctor', 'admin']}><RadiologyAI /></RequireAuth>} />
 
-          {/* AI (Accessible by all) */}
-          <Route path="/ask-ai" element={<RequireAuth><AskAI /></RequireAuth>} />
-        </Routes>
-      </Layout>
-    </Router>
+            {/* AI (Accessible by all) */}
+            <Route path="/ask-ai" element={<RequireAuth><AskAI /></RequireAuth>} />
+          </Routes>
+        </Layout>
+      </Router>
+    </>
   );
 };
 

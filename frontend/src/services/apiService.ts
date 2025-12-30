@@ -66,12 +66,16 @@ async function fetchFromApi<T>(endpoint: string): Promise<T> {
 
     if (!response.ok) {
       if (response.status === 401) {
-        addLog('ERROR', 'AUTH', 'Token失效或未登录', endpoint);
-        logout();
-      }
-      throw new Error(`HTTP ${response.status} - ${response.statusText}`);
+      addLog('ERROR', 'AUTH', 'Token失效或未登录', endpoint);
+    
+      // 触发全局事件，让 UI 层弹出模态框
+      window.dispatchEvent(new Event('auth-session-expired'));
+    
+      // 抛出错误以中断后续业务逻辑
+      throw new Error('Unauthorized');
     }
-
+    throw new Error(`HTTP ${response.status} - ${response.statusText}`);
+}
     const data = await response.json();
     
     addLog('SUCCESS', 'API_RESPONSE', '请求成功', `Endpoint: ${endpoint}`, {

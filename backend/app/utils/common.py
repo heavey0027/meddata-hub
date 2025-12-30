@@ -55,7 +55,7 @@ def verify_jwt():
         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
         
         # 认证成功，记录用户身份而非 Token 本身
-        # logger.info(f"[AUTH] Verified User: {payload.get('user_id')} (Role: {payload.get('role')})")
+        logger.info(f"[AUTH] Verified User: {payload.get('user_id')} (Role: {payload.get('role')})")
         return payload  # 返回解码后的 payload
 
     except jwt.ExpiredSignatureError:

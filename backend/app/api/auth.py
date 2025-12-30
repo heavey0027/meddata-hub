@@ -26,7 +26,7 @@ def login():
         if role == 'admin':
             # 管理员账号密码为硬编码
             if user_id == 'admin' and password == 'admin123':
-                logger.info("Admin login successful: %s", user_id)
+                logger.info("[AUTH] Admin login successful | User: %s", user_id)
                 # 生成 JWT
                 token = generate_jwt(user_id, role)
                 return jsonify({
@@ -35,7 +35,7 @@ def login():
                     "user": {"id": "admin", "name": "系统管理员", "role": "admin"}
                 })
             else:
-                logger.warning("Admin login failed: %s", user_id)
+                logger.warning("[SECURITY] Admin login failed | User: %s | Reason: Invalid credentials", user_id)
                 return jsonify({"success": False, "message": "管理员认证失败"}), 401
 
         # 医患登录（查询数据库）
@@ -48,7 +48,7 @@ def login():
         elif role == 'doctor':
             table_name = "doctors"
         else:
-            logger.warning("Invalid role: %s", role)
+            logger.warning("[SECURITY] Login blocked | Invalid role provided: %s", role)
             return jsonify({"success": False, "message": "无效的角色"}), 400
 
         # 从数据库获取用户数据
@@ -57,7 +57,7 @@ def login():
         user = cursor.fetchone()
 
         if user:
-            logger.info("User login successful: %s, Role: %s", user_id, role)
+            logger.info("[AUTH] User login successful | User: %s | Role: %s", user_id, role)
             # 生成 JWT
             token = generate_jwt(user_id, role)
             return jsonify({
@@ -70,11 +70,11 @@ def login():
                 }
             })
         else:
-            logger.warning("Password mismatch for user: %s", user_id)
+            logger.warning("[SECURITY] User login failed | User: %s | Role: %s | Reason: Invalid credentials", user_id, role)
             return jsonify({"success": False, "message": "账号或密码错误"}), 401
 
     except Exception as e:
-        logger.error("Login error: %s", e)
+        logger.error("[SYSTEM] Login endpoint error | Exception: %s", e)
         return jsonify({"success": False, "message": "服务器内部错误"}), 500
 
     finally:
