@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { getPatients, createPatient, updatePatient, deletePatient, getFullPatientDetails, getDoctors, getMedicines, saveMedicalRecord, deleteMedicalRecord } from '../services/apiService';
+import { getPatients, createPatient, updatePatient, deletePatient, getFullPatientDetails, getDoctors, getMedicines, saveMedicalRecord, deleteMedicalRecord, findPatientByQuery } from '../services/apiService';
 import { Patient, Doctor, Medicine, MedicalRecord, PrescriptionDetail } from '../types';
-import { Search, Plus, Trash2, Edit2, X, FileText, Pill, FilePlus, Crown, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Search, Plus, Trash2, Edit2, X, FileText, Pill, FilePlus, Crown, ChevronLeft, ChevronRight, AlertTriangle, UserSearch } from 'lucide-react';
 import { addLog } from '../services/logger';
 import { getCurrentUser } from '../services/authService';
 
@@ -24,8 +24,14 @@ export const PatientList: React.FC = () => {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   
+  // Local Filter State
   const [searchTerm, setSearchTerm] = useState('');
   const [offset, setOffset] = useState(0);
+
+  // Remote ID Search State
+  const [remoteQuery, setRemoteQuery] = useState('');
+  const [searchedPatient, setSearchedPatient] = useState<Patient | null>(null);
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   
   // Patient Edit/Add Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -68,6 +74,40 @@ export const PatientList: React.FC = () => {
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
+  };
+
+  // --- Remote Search Logic ---
+  const handleRemoteSearch = async () => {
+    if (!remoteQuery.trim()) {
+      alert("请输入患者ID");
+      return;
+    }
+    
+    try {
+      // 假设 findPatientByQuery 返回单个 Patient 对象或 null/undefined
+      const result = await findPatientByQuery(remoteQuery);
+      
+      if (result) {
+        setSearchedPatient(result);
+        setIsSearchModalOpen(true);
+        setRemoteQuery(''); // 清空搜索框
+      } else {
+        alert(`未找到 ID 为 "${remoteQuery}" 的患者。`);
+      }
+    } catch (e: any) {
+      alert(`搜索失败: ${e.message || '未知错误'}`);
+    }
+  };
+
+  const handleActionFromSearch = (action: 'edit' | 'addRecord' | 'viewRecord', patient: Patient) => {
+    setIsSearchModalOpen(false); // 关闭搜索结果弹窗
+    
+    // 稍微延迟以确保弹窗切换流畅
+    setTimeout(() => {
+        if (action === 'edit') openEdit(patient);
+        if (action === 'addRecord') openAddRecord(patient);
+        if (action === 'viewRecord') viewRecords(patient);
+    }, 100);
   };
 
   const filteredPatients = patients.filter(p => 
@@ -231,20 +271,46 @@ export const PatientList: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Top Toolbar */}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-        <div className="relative w-full sm:w-96">
-          <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="在当前页搜索患者姓名、ID或电话..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-            value={searchTerm}
-            onChange={handleSearch}
-          />
+        <div className="flex gap-4 w-full sm:w-auto flex-1">
+            {/* Local Filter */}
+            <div className="relative flex-1 sm:max-w-xs">
+            <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+            <input
+                type="text"
+                placeholder="过滤当前页 (姓名/电话)..."
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm"
+                value={searchTerm}
+                onChange={handleSearch}
+            />
+            </div>
+            
+            {/* Remote ID Search */}
+            <div className="relative flex-1 sm:max-w-xs flex gap-2">
+                <div className="relative w-full">
+                    <UserSearch className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="输入ID精确查找..."
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"
+                        value={remoteQuery}
+                        onChange={(e) => setRemoteQuery(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleRemoteSearch()}
+                    />
+                </div>
+                <button 
+                    onClick={handleRemoteSearch}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm transition-colors whitespace-nowrap"
+                >
+                    查找
+                </button>
+            </div>
         </div>
+
         <button 
           onClick={openAdd}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap"
         >
           <Plus className="h-5 w-5" />
           新建档案
@@ -377,6 +443,63 @@ export const PatientList: React.FC = () => {
               <button onClick={handleSavePatient} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">保存</button>
             </div>
           </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Remote Search Result Modal */}
+      {isSearchModalOpen && searchedPatient && createPortal(
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[9999] backdrop-blur-sm">
+            <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl relative animate-fade-in border-t-4 border-indigo-500">
+                <button onClick={() => setIsSearchModalOpen(false)} className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+                <div className="text-center mb-6">
+                    <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <UserSearch className="h-8 w-8 text-indigo-600" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900">查找结果</h3>
+                    <p className="text-sm text-gray-500 mt-1">ID: {searchedPatient.id}</p>
+                </div>
+                
+                <div className="bg-gray-50 rounded-lg p-4 mb-6 space-y-2 text-sm">
+                    <div className="flex justify-between border-b border-gray-200 pb-2">
+                        <span className="text-gray-500">姓名</span>
+                        <span className="font-semibold text-gray-800">{searchedPatient.name} {searchedPatient.isVip && <span className="text-red-500">(重点患者)</span>}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-gray-200 pb-2 pt-1">
+                        <span className="text-gray-500">性别/年龄</span>
+                        <span className="text-gray-800">{searchedPatient.gender} / {searchedPatient.age}岁</span>
+                    </div>
+                    <div className="flex justify-between border-b border-gray-200 pb-2 pt-1">
+                        <span className="text-gray-500">电话</span>
+                        <span className="text-gray-800">{searchedPatient.phone}</span>
+                    </div>
+                    <div className="flex justify-between pt-1">
+                        <span className="text-gray-500">建档日期</span>
+                        <span className="text-gray-800">{searchedPatient.createTime}</span>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <button 
+                        onClick={() => handleActionFromSearch('addRecord', searchedPatient)}
+                        className="col-span-2 flex items-center justify-center gap-2 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                        <FilePlus className="h-4 w-4" /> 新增病历
+                    </button>
+                    <button 
+                        onClick={() => handleActionFromSearch('viewRecord', searchedPatient)}
+                        className="flex items-center justify-center gap-2 bg-indigo-50 text-indigo-700 py-2 rounded-lg hover:bg-indigo-100 transition-colors border border-indigo-200"
+                    >
+                        <FileText className="h-4 w-4" /> 查看病历
+                    </button>
+                    <button 
+                        onClick={() => handleActionFromSearch('edit', searchedPatient)}
+                        className="flex items-center justify-center gap-2 bg-gray-50 text-gray-700 py-2 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
+                    >
+                        <Edit2 className="h-4 w-4" /> 编辑信息
+                    </button>
+                </div>
+            </div>
         </div>,
         document.body
       )}
