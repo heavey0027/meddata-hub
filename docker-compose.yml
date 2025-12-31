@@ -47,7 +47,9 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY} 
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+    volumes:
+      - uploaded_files:/app/uploaded_files  # 将上传的文件存储在卷中
     networks:
       - meddata-net
     restart: always
@@ -69,6 +71,7 @@ services:
 volumes:
   db_data:
   redis_data: # 新增 Redis 数据卷
+  uploaded_files:
 
 networks:
   meddata-net:
