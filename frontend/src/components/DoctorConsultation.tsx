@@ -6,7 +6,7 @@ import {
 } from '../services/apiService';
 import { getCurrentUser } from '../services/authService';
 import { Appointment, Doctor, Medicine, MedicalRecord, PrescriptionDetail, Patient } from '../types';
-import { Stethoscope, User, Clock, FileText, ChevronRight, Pill, Trash2, CheckCircle, AlertCircle, History, Users, BadgeCheck, BarChart2, PieChart as PieIcon, Activity, Calendar, UserCheck } from 'lucide-react';
+import { Stethoscope, User, Clock, FileText, ChevronRight, Pill, Trash2, CheckCircle, AlertCircle, History, Users, BadgeCheck, BarChart2, PieChart as PieIcon, Activity, Calendar, UserCheck, XCircle } from 'lucide-react';
 import { addLog } from '../services/logger';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, 
@@ -88,6 +88,8 @@ export const DoctorConsultation: React.FC = () => {
       if (user?.role === 'admin') {
           setAllAppointments(apps);
       } else {
+          // Doctor only sees PENDING appointments in the queue
+          // Cancelled or Completed should not appear in the "To Do" list
           const pending = apps.filter(a => a.status === 'pending');
           // Client-side split: Mine vs Others in Department
           setMyQueue(pending.filter(a => a.doctorId === user?.id));
@@ -228,19 +230,23 @@ export const DoctorConsultation: React.FC = () => {
     const total = allAppointments.length;
     const pending = allAppointments.filter(a => a.status === 'pending').length;
     const completed = allAppointments.filter(a => a.status === 'completed').length;
+    const cancelled = allAppointments.filter(a => a.status === 'cancelled').length;
     
     const statusData = [
         { name: '候诊中 (Pending)', value: pending },
-        { name: '已完成 (Completed)', value: completed }
+        { name: '已完成 (Completed)', value: completed },
+        { name: '已取消 (Cancelled)', value: cancelled }
     ];
     
     const deptCount: Record<string, number> = {};
     allAppointments.forEach(a => {
-        deptCount[a.departmentName] = (deptCount[a.departmentName] || 0) + 1;
+        if(a.status !== 'cancelled') { // Optional: exclude cancelled from dept popularity? or keep it? keeping it for load analysis
+            deptCount[a.departmentName] = (deptCount[a.departmentName] || 0) + 1;
+        }
     });
     const deptData = Object.entries(deptCount).map(([name, value]) => ({ name, value }));
 
-    const COLORS = ['#F59E0B', '#10B981', '#3B82F6', '#EC4899'];
+    const COLORS = ['#F59E0B', '#10B981', '#9CA3AF', '#3B82F6'];
 
     return (
         <div className="space-y-6 animate-fade-in pb-10">
@@ -265,7 +271,7 @@ export const DoctorConsultation: React.FC = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
                     <div>
                         <p className="text-sm text-gray-500 mb-1">当日挂号总数</p>
@@ -282,10 +288,17 @@ export const DoctorConsultation: React.FC = () => {
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
                     <div>
-                        <p className="text-sm text-gray-500 mb-1">当日已完成接诊</p>
+                        <p className="text-sm text-gray-500 mb-1">已完成接诊</p>
                         <h3 className="text-3xl font-bold text-green-500">{completed}</h3>
                     </div>
                     <div className="bg-green-50 p-3 rounded-full text-green-500"><CheckCircle className="h-8 w-8" /></div>
+                </div>
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+                    <div>
+                        <p className="text-sm text-gray-500 mb-1">已取消/失效</p>
+                        <h3 className="text-3xl font-bold text-gray-500">{cancelled}</h3>
+                    </div>
+                    <div className="bg-gray-100 p-3 rounded-full text-gray-500"><XCircle className="h-8 w-8" /></div>
                 </div>
             </div>
 
@@ -318,7 +331,7 @@ export const DoctorConsultation: React.FC = () => {
 
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                     <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
-                        <BarChart2 className="h-5 w-5 text-blue-500" /> 科室挂号热度
+                        <BarChart2 className="h-5 w-5 text-blue-500" /> 科室挂号热度 (有效)
                     </h3>
                     <div className="h-64">
                         <ResponsiveContainer width="100%" height="100%">
@@ -361,22 +374,32 @@ export const DoctorConsultation: React.FC = () => {
                                     </td>
                                 </tr>
                             ) : (
-                                allAppointments.map(app => (
-                                    <tr key={app.id} className="hover:bg-gray-50">
-                                        <td className="px-6 py-3 font-mono text-gray-500">{app.id}</td>
-                                        <td className="px-6 py-3 font-medium text-gray-800">{app.patientName}</td>
-                                        <td className="px-6 py-3 text-gray-600">{app.departmentName}</td>
-                                        <td className="px-6 py-3 text-gray-600">{app.doctorName || '随机分配'}</td>
-                                        <td className="px-6 py-3">
-                                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                                                app.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                                            }`}>
-                                                {app.status === 'completed' ? '已完成' : '候诊中'}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-3 text-gray-500 text-xs">{app.createTime}</td>
-                                    </tr>
-                                ))
+                                allAppointments.map(app => {
+                                    let statusBadge;
+                                    switch(app.status) {
+                                        case 'completed':
+                                            statusBadge = <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">已完成</span>;
+                                            break;
+                                        case 'cancelled':
+                                            statusBadge = <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500 flex items-center w-fit gap-1"><XCircle className="h-3 w-3" />已取消</span>;
+                                            break;
+                                        default: // pending
+                                            statusBadge = <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-yellow-100 text-yellow-700">候诊中</span>;
+                                    }
+
+                                    return (
+                                        <tr key={app.id} className="hover:bg-gray-50">
+                                            <td className="px-6 py-3 font-mono text-gray-500">{app.id}</td>
+                                            <td className="px-6 py-3 font-medium text-gray-800">{app.patientName}</td>
+                                            <td className="px-6 py-3 text-gray-600">{app.departmentName}</td>
+                                            <td className="px-6 py-3 text-gray-600">{app.doctorName || '随机分配'}</td>
+                                            <td className="px-6 py-3">
+                                                {statusBadge}
+                                            </td>
+                                            <td className="px-6 py-3 text-gray-500 text-xs">{app.createTime}</td>
+                                        </tr>
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>
