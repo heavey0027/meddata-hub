@@ -33,6 +33,8 @@ def setup_logging():
 def create_app():
     app = Flask(__name__)
     CORS(app)  # 允许跨域
+    # 设置文件大小限制，配合 Nginx
+    app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
 
     # 1. 初始化日志
     setup_logging()
