@@ -9,6 +9,9 @@ import {
 } from 'lucide-react';
 import { getCurrentUser } from '../services/authService';
 
+// 定义最大文件大小 (MB)
+const MAX_FILE_SIZE_MB = 100;
+
 export const MultimodalManager: React.FC = () => {
   const [dataList, setDataList] = useState<MultimodalData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,7 +106,19 @@ export const MultimodalManager: React.FC = () => {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0]);
+      const file = e.target.files[0];
+      
+      // 前端检查文件大小
+      const fileSizeMB = file.size / 1024 / 1024;
+      if (fileSizeMB > MAX_FILE_SIZE_MB) {
+        alert(`文件过大 (${fileSizeMB.toFixed(2)} MB)！\n请上传小于 ${MAX_FILE_SIZE_MB} MB 的文件。`);
+        // 清空 input
+        e.target.value = '';
+        setSelectedFile(null);
+        return;
+      }
+
+      setSelectedFile(file);
     }
   };
 
@@ -135,7 +150,16 @@ export const MultimodalManager: React.FC = () => {
       resetForm();
       loadData();
     } catch (e: any) {
-      alert("上传失败: " + e.message);
+      console.error("Upload error details:", e);
+      // 增强错误提示
+      let msg = e.message || '未知错误';
+      if (msg.includes('413') || msg.includes('Entity Too Large')) {
+          msg = `文件太大，服务器拒绝接收 (413)。请联系管理员调整 Nginx/后端限制，或上传更小的文件。`;
+      } else if (msg.includes('Unexpected token') && msg.includes('<')) {
+          // 这通常意味着后端崩了返回了 HTML 页面
+          msg = `上传失败：服务器内部错误 (可能文件过大导致崩溃)，请查看控制台网络请求详情。`;
+      }
+      alert("上传失败: " + msg);
     } finally {
       setUploading(false);
     }
@@ -528,12 +552,12 @@ export const MultimodalManager: React.FC = () => {
                                 <div className="text-center">
                                     <FileType className="h-8 w-8 mx-auto text-indigo-500 mb-2" />
                                     <p className="text-sm font-medium text-gray-900">{selectedFile.name}</p>
-                                    <p className="text-xs text-gray-500">{(selectedFile.size / 1024).toFixed(2)} KB</p>
+                                    <p className="text-xs text-gray-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
                                 </div>
                             ) : (
                                 <>
                                    <Upload className="h-8 w-8 mb-2 text-gray-400" />
-                                   <p className="text-sm">点击或拖拽文件至此</p>
+                                   <p className="text-sm">点击或拖拽文件至此 (Max: {MAX_FILE_SIZE_MB}MB)</p>
                                 </>
                             )}
                         </div>
