@@ -1,6 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Zap, FileText, AlertCircle, Loader2, Image as ImageIcon, Settings, Save, ChevronDown, ChevronUp } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { fileToGenerativePart, analyzeMedicalImage, DEFAULT_CONFIGS } from '../services/aiService';
 import { addLog } from '../services/logger';
 import { AIConfig, AIProvider } from '../types';
@@ -52,9 +53,10 @@ export const RadiologyAI: React.FC = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+    // 'image/bmp' 和 'image/tiff' 等格式支持
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'image/bmp', 'image/tiff'];
     if (!validTypes.includes(file.type)) {
-      alert("不支持的文件格式。请上传 JPG, PNG 或 WEBP 格式的医学影像。");
+      alert("不支持的文件格式。请上传 JPG, PNG, WEBP 或 BMP 格式的医学影像。");
       return;
     }
 
@@ -63,7 +65,7 @@ export const RadiologyAI: React.FC = () => {
       const fullBase64 = `data:${file.type};base64,${base64Data}`;
       setSelectedImage(fullBase64);
       setAnalysis('');
-      addLog('INFO', '医学影像AI', '上传图片', `文件: ${file.name}`);
+      addLog('INFO', '医学影像AI', '上传图片', `文件: ${file.name} (${file.type})`);
     } catch (e) {
       console.error("Error reading file", e);
       alert("读取文件失败。");
@@ -88,18 +90,21 @@ export const RadiologyAI: React.FC = () => {
       const mimeType = matches[1];
       const base64ForApi = matches[2];
 
+      // 注意：部分 AI 模型（如Gemini）可能不原生支持 BMP。
+      // 如果后端服务不自动转码，这里可能需要前端 Canvas 转码逻辑。
+      // 但大多数现代多模态接口（如 GPT-4o）处理 base64 兼容性较好。
       const result = await analyzeMedicalImage(
         aiConfig,
         base64ForApi, 
         mimeType,
-        "请详细分析这张医学扫描图。首先识别影像模态（如X光 X-Ray、CT、MRI、超声等）。接着指出关键解剖结构，并识别潜在的异常、病灶或骨折。最后给出初步的影像学诊断建议。请使用清晰的结构化Markdown格式输出。"
+        "请详细分析这张医学扫描图。首先识别影像模态（如X光 X-Ray、CT、MRI、超声等）。接着指出关键解剖结构，并识别潜在的异常、病灶或骨折。最后给出初步的影像学诊断建议。请使用清晰的结构化Markdown格式输出（包含标题、列表、加粗重点）。"
       );
       setAnalysis(result);
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : "未知错误";
-      setAnalysis(`分析失败: ${errMsg}`);
+      setAnalysis(`**分析失败**: ${errMsg}`);
       if (aiConfig.provider === 'deepseek') {
-          setAnalysis(prev => prev + "\n\n(注意: DeepSeek 等部分模型可能暂不支持直接的图像分析功能，建议切换至 Gemini 或 ChatGPT-4o)");
+          setAnalysis(prev => prev + "\n\n> 注意: DeepSeek 等部分模型可能暂不支持直接的图像分析功能，建议切换至 Gemini 或 ChatGPT-4o");
       }
     } finally {
       setLoading(false);
@@ -202,15 +207,16 @@ export const RadiologyAI: React.FC = () => {
                 </div>
                 <p className="text-gray-900 font-medium text-lg">点击上传医学影像</p>
                 <p className="text-sm text-gray-500 mt-2 max-w-xs mx-auto">
-                  支持 X光 (X-Ray), 计算机断层扫描 (CT), 磁共振 (MRI), 超声 等影像文件
+                  支持 X光 (X-Ray), CT, MRI, 超声 (JPG/PNG/WEBP/BMP)
                 </p>
               </div>
             )}
+            {/* 属性增加 image/bmp */}
             <input 
               type="file" 
               ref={fileInputRef} 
               className="hidden" 
-              accept="image/jpeg, image/png, image/webp"
+              accept="image/jpeg, image/png, image/webp, image/bmp, image/tiff"
               onChange={handleFileChange} 
             />
           </div>
@@ -258,10 +264,19 @@ export const RadiologyAI: React.FC = () => {
             </div>
           )}
           {analysis && (
-            <div className="prose prose-blue prose-sm max-w-none">
-              <div className="whitespace-pre-wrap text-gray-800 leading-relaxed font-sans">
+            // 使用 ReactMarkdown 替换普通 div
+            // prose 类用于自动美化 Markdown 转换后的 HTML 样式
+            <div className="prose prose-blue prose-sm max-w-none text-gray-800">
+              <ReactMarkdown 
+                components={{
+                    // 自定义渲染组件以增强样式 (可选)
+                    h3: ({node, ...props}) => <h3 className="text-blue-700 font-bold mt-4 mb-2" {...props} />,
+                    strong: ({node, ...props}) => <strong className="text-blue-900 font-bold" {...props} />,
+                    li: ({node, ...props}) => <li className="my-1" {...props} />
+                }}
+              >
                 {analysis}
-              </div>
+              </ReactMarkdown>
             </div>
           )}
         </div>
